@@ -1,0 +1,49 @@
+2026-11-10 11:16:21.110 | ERROR    | minio_utils.py      :<module>       :46   - MinIO客户端初始化失败，错误信息：HTTPConnectionPool(host='localhost', port=9000): Max retries exceeded with url: /knowledge-base-files?location= (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9000): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"))
+2026-11-10 11:21:25.670 | ERROR    | minio_utils.py      :<module>       :46   - MinIO客户端初始化失败，错误信息：HTTPConnectionPool(host='localhost', port=9000): Max retries exceeded with url: /knowledge-base-files?location= (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9000): Failed to establish a new connection: [WinError 10061] 由于目标计算机积极拒绝，无法连接。"))
+2026-11-10 12:14:18.438 | INFO     | minio_utils.py      :<module>       :25   - MinIO存储桶[knowledge-base-files]不存在，开始创建
+2026-11-10 12:14:18.538 | INFO     | minio_utils.py      :<module>       :27   - MinIO存储桶[knowledge-base-files]创建成功
+2026-11-10 12:14:18.561 | INFO     | minio_utils.py      :<module>       :42   - MinIO存储桶[knowledge-base-files]已配置公网只读策略，支持匿名URL访问
+2026-11-10 12:14:33.629 | INFO     | minio_utils.py      :<module>       :29   - MinIO存储桶[knowledge-base-files]已存在，无需重复创建
+2026-11-10 12:14:33.736 | INFO     | minio_utils.py      :<module>       :42   - MinIO存储桶[knowledge-base-files]已配置公网只读策略，支持匿名URL访问
+2026-11-10 12:14:35.944 | INFO     | file_import_service.py:<module>       :234  - File Import Service 服务启动中...
+2026-11-10 12:16:07.190 | INFO     | file_import_service.py:get_import_page:53   - 前端页面访问，文件绝对路径：D:\Desktop\PythonProject\app\import_process\page\import.html
+2026-11-10 12:16:15.502 | INFO     | file_import_service.py:get_import_page:53   - 前端页面访问，文件绝对路径：D:\Desktop\PythonProject\app\import_process\page\import.html
+2026-11-10 12:16:33.521 | INFO     | node_item_name_confirm.py:node_item_name_confirm:314  - >>> node_item_name_confirm: 开始处理
+2026-11-10 12:16:33.819 | INFO     | node_item_name_confirm.py:node_item_name_confirm:325  - Node: 获取到 0 条历史消息
+2026-11-10 12:16:33.831 | INFO     | node_item_name_confirm.py:step_3_extract_info:29   - Step 3: 开始提取信息 (LLM)
+2026-11-10 12:16:33.838 | INFO     | lm_utils.py         :get_llm_client :44   - [LLM客户端] 开始初始化新实例：模型=kimi-k3.1-pro，JSON模式=True
+2026-11-10 12:16:35.072 | INFO     | lm_utils.py         :get_llm_client :71   - [LLM客户端] 实例初始化成功并缓存：模型=kimi-k3.1-pro，JSON模式=True
+2026-11-10 12:16:35.072 | INFO     | node_item_name_confirm.py:step_3_extract_info:39   - Step 3: 历史上下文构建完成，长度: 0 字符
+2026-11-10 12:16:35.072 | INFO     | node_item_name_confirm.py:step_3_extract_info:56   - Step 3: 正在调用 LLM 进行提取...
+2026-11-10 12:16:35.502 | ERROR    | node_item_name_confirm.py:step_3_extract_info:77   - Step 3: LLM 提取或解析失败: 'NoneType' object is not iterable
+2026-11-10 12:16:35.505 | INFO     | node_item_name_confirm.py:node_item_name_confirm:346  - Node: 未提取到商品名，跳过向量检索
+2026-11-10 12:16:35.505 | INFO     | node_item_name_confirm.py:step_6_check_confirmation:232  - Step 6: 检查确认状态并更新 State
+2026-11-10 12:16:35.505 | INFO     | node_item_name_confirm.py:step_6_check_confirmation:273  - Step 6: [分支C] 无确认也无候选
+2026-11-10 12:16:35.505 | INFO     | node_item_name_confirm.py:step_7_write_history:283  - Step 7: 写入会话历史
+2026-11-10 12:16:35.521 | INFO     | node_item_name_confirm.py:step_7_write_history:287  - Step 7: 保存助手回答
+2026-11-10 12:16:35.521 | INFO     | node_item_name_confirm.py:step_7_write_history:297  - Step 7: 更新用户消息 (ID: 6af29aa18689ef25075d012d)
+2026-11-10 12:16:35.536 | INFO     | node_item_name_confirm.py:node_item_name_confirm:360  - Node: 处理结束, Final State Item Names: []
+2026-11-10 12:16:35.538 | INFO     | node_answer_output.py:node_answer_output:301  - ---node_answer_output (答案生成) 节点开始处理---
+2026-11-10 12:16:35.538 | INFO     | node_answer_output.py:step_1_check_answer:24   - ---Step 1: 发现已有答案，执行流式推送---
+2026-11-10 12:16:35.553 | INFO     | node_answer_output.py:node_answer_output:320  - ---写入MongoDB历史记录---
+2026-11-10 12:16:35.558 | INFO     | node_answer_output.py:node_answer_output:326  - ---发送 final 事件---图片为：[]
+2026-11-10 12:16:35.558 | INFO     | node_answer_output.py:node_answer_output:338  - ---node_answer_output 节点处理结束---
+2026-11-10 12:18:39.397 | INFO     | node_item_name_confirm.py:node_item_name_confirm:314  - >>> node_item_name_confirm: 开始处理
+2026-11-10 12:18:39.405 | INFO     | node_item_name_confirm.py:node_item_name_confirm:325  - Node: 获取到 3 条历史消息
+2026-11-10 12:18:39.412 | INFO     | node_item_name_confirm.py:step_3_extract_info:29   - Step 3: 开始提取信息 (LLM)
+2026-11-10 12:18:39.412 | INFO     | node_item_name_confirm.py:step_3_extract_info:39   - Step 3: 历史上下文构建完成，长度: 88 字符
+2026-11-10 12:18:39.424 | INFO     | node_item_name_confirm.py:step_3_extract_info:56   - Step 3: 正在调用 LLM 进行提取...
+2026-11-10 12:18:39.657 | ERROR    | node_item_name_confirm.py:step_3_extract_info:77   - Step 3: LLM 提取或解析失败: 'NoneType' object is not iterable
+2026-11-10 12:18:39.657 | INFO     | node_item_name_confirm.py:node_item_name_confirm:346  - Node: 未提取到商品名，跳过向量检索
+2026-11-10 12:18:39.667 | INFO     | node_item_name_confirm.py:step_6_check_confirmation:232  - Step 6: 检查确认状态并更新 State
+2026-11-10 12:18:39.667 | INFO     | node_item_name_confirm.py:step_6_check_confirmation:273  - Step 6: [分支C] 无确认也无候选
+2026-11-10 12:18:39.674 | INFO     | node_item_name_confirm.py:step_7_write_history:283  - Step 7: 写入会话历史
+2026-11-10 12:18:39.679 | INFO     | node_item_name_confirm.py:step_7_write_history:287  - Step 7: 保存助手回答
+2026-11-10 12:18:39.679 | INFO     | node_item_name_confirm.py:step_7_write_history:297  - Step 7: 更新用户消息 (ID: 6af29b1f8689ef25075d0130)
+2026-11-10 12:18:39.692 | INFO     | node_item_name_confirm.py:node_item_name_confirm:360  - Node: 处理结束, Final State Item Names: []
+2026-11-10 12:18:39.692 | INFO     | node_answer_output.py:node_answer_output:301  - ---node_answer_output (答案生成) 节点开始处理---
+2026-11-10 12:18:39.692 | INFO     | node_answer_output.py:step_1_check_answer:24   - ---Step 1: 发现已有答案，执行流式推送---
+2026-11-10 12:18:39.705 | INFO     | node_answer_output.py:node_answer_output:320  - ---写入MongoDB历史记录---
+2026-11-10 12:18:39.707 | INFO     | node_answer_output.py:node_answer_output:326  - ---发送 final 事件---图片为：[]
+2026-11-10 12:18:39.707 | INFO     | node_answer_output.py:node_answer_output:338  - ---node_answer_output 节点处理结束---
+2026-11-10 20:32:24.477 | INFO     | file_import_service.py:get_import_page:53   - 前端页面访问，文件绝对路径：D:\Desktop\PythonProject\app\import_process\page\import.html

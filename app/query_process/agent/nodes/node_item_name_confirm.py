@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 import json
 import logging
 from typing import List, Dict, Any, Optional
@@ -12,10 +13,35 @@ from app.clients.mongo_history_utils import get_recent_messages, save_chat_messa
 from app.lm.lm_utils import get_llm_client
 from app.lm.embedding_utils import generate_embeddings
 from app.clients.milvus_utils import get_milvus_client, create_hybrid_search_requests, hybrid_search
+from app.utils.lang_utils import pick
 from dotenv import load_dotenv, find_dotenv
 from app.core.logger import logger
 
-load_dotenv(find_dotenv())
+load_dotenv(find_dotenv(), override=True)
+
+
+def _fallback_item_names(query: str) -> List[str]:
+    """
+    LLM 提取失败时的兜底：若原始问题本身较短（更像商品名/短句），
+    则直接用该文本作为商品名去检索，避免因 LLM 限流/异常导致完全无法检索。
+    """
+    q = (query or "").strip()
+    if q and len(q) <= 60:
+        return [q]
+    return []
+
+
+def _normalize_name(name: str) -> str:
+    """
+    归一化商品名用于字面匹配：小写、去除空白与常见标点符号。
+    """
+    if not name:
+        return ""
+    return re.sub(
+        r"[\s\u3000\-_/\\·—–+&＆（）()\[\]【】《》<>\"'“”‘’.,，。！？!?]",
+        "",
+        str(name).strip().lower(),
+    )
 
 
 def step_3_extract_info(query: str, history: List[Dict]) -> Dict:
@@ -44,7 +70,7 @@ def step_3_extract_info(query: str, history: List[Dict]) -> Dict:
         prompt = load_prompt("rewritten_query_and_itemnames", history_text=history_text, query=query)
         logger.debug(f"Step 3: 提示词加载成功，Prompt长度: {len(prompt)}")
     except Exception as e:
-        logger.error(f"Step 3: 加载提示词失败: {e}")
+        logger.error("Step 3: 加载提示词失败: {}", e)
         return {"item_names": [], "rewritten_query": query}
 
     messages = [
@@ -56,26 +82,69 @@ def step_3_extract_info(query: str, history: List[Dict]) -> Dict:
         logger.info("Step 3: 正在调用 LLM 进行提取...")
         response = client.invoke(messages)
         content = response.content
-        logger.debug(f"Step 3: LLM 原始响应: {content}")
+
+        # 防御：部分模型（如mercury/kimi）reasoning模式下可能返回null或复杂结构content
+        if content is None:
+            logger.warning("Step 3: LLM返回的content为None，使用原始query作为fallback")
+            return {"item_names": _fallback_item_names(query), "rewritten_query": query}
+
+        # 兼容content为list[dict]（某些模型的thinking模式输出块结构）
+        if isinstance(content, list):
+            # 尝试从content blocks中提取文本
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict):
+                    block_type = block.get("type", "")
+                    if block_type == "text" and block.get("text"):
+                        text_parts.append(block["text"])
+                    elif block_type == "" and "text" in block:
+                        text_parts.append(block["text"])
+            content = "\n".join(text_parts) if text_parts else None
+            if not content:
+                logger.warning("Step 3: LLM返回的content blocks无文本内容，使用原始query作为fallback")
+                return {"item_names": _fallback_item_names(query), "rewritten_query": query}
+
+        if not isinstance(content, str):
+            logger.warning(f"Step 3: LLM返回非字符串content ({type(content).__name__})，使用原始query作为fallback")
+            return {"item_names": _fallback_item_names(query), "rewritten_query": query}
+
+        logger.debug(f"Step 3: LLM 原始响应（前200字符）: {content[:200]}")
 
         # 清理 Markdown 代码块
-        if content.startswith("```json"):
-            content = content.replace("```json", "").replace("```", "")
-        
-        result = json.loads(content)
-        
-        # 健壮性检查
+        stripped = content.strip()
+        if stripped.startswith("```json"):
+            stripped = stripped.replace("```json", "").replace("```", "").strip()
+        elif stripped.startswith("```"):
+            stripped = stripped.replace("```", "").strip()
+
+        raw_parsed = json.loads(stripped)
+
+        # 健壮性检查：确保 result 是 dict
+        if not isinstance(raw_parsed, dict):
+            logger.warning(f"Step 3: LLM 返回了非字典JSON ({type(raw_parsed).__name__})，使用fallback")
+            return {"item_names": _fallback_item_names(query), "rewritten_query": query}
+
+        result = raw_parsed
         if "item_names" not in result:
             result["item_names"] = []
         if "rewritten_query" not in result:
             result["rewritten_query"] = query
-            
+
+        # 额外防御：item_names 应为列表
+        if not isinstance(result["item_names"], list):
+            logger.warning(f"Step 3: item_names 不是列表 ({type(result['item_names']).__name__})，重置为空列表")
+            result["item_names"] = []
+
         logger.info(f"Step 3: 提取结果解析成功 - 商品名: {result['item_names']}, 重写问题: {result['rewritten_query']}")
         return result
 
+    except TypeError as e:
+        # OpenAI SDK 内部报错：当模型返回 choices=None 时触发 ('NoneType' object is not iterable)
+        logger.error("Step 3: LLM SDK 解析失败（可能是模型返回空响应），使用fallback: {}", e)
+        return {"item_names": _fallback_item_names(query), "rewritten_query": query}
     except Exception as e:
-        logger.error(f"Step 3: LLM 提取或解析失败: {e}")
-        return {"item_names": [], "rewritten_query": query}
+        logger.error("Step 3: LLM 提取或解析失败: {}", e)
+        return {"item_names": _fallback_item_names(query), "rewritten_query": query}
 
 
 def step_4_vectorize_and_query(item_names: List[str]) -> List[Dict]:
@@ -149,14 +218,19 @@ def step_4_vectorize_and_query(item_names: List[str]) -> List[Dict]:
                 results.append({"extracted_name": name, "matches": []})
 
     except Exception as e:
-        logger.error(f"Step 4: 向量化或搜索过程发生全局错误: {e}")
+        logger.error("Step 4: 向量化或搜索过程发生全局错误: {}", e)
 
     return results
 
 
 def step_5_align_item_names(query_results: List[Dict]) -> Dict:
     """
-    根据 Milvus 搜索评分，对齐商品名，生成「确认商品名」和「候选商品名」
+    根据 Milvus 搜索评分 + 字面匹配，对齐商品名，生成「确认商品名」和「候选商品名」
+
+    新增规则（E/F/G）：
+    - 规则E: 归一化后完全相等 -> 直接确认
+    - 规则F: 唯一子串候选且分数达标 -> 直接确认（解决「万用表」→「万用表RS-12的使用」这类短名匹配）
+    - 规则G: 多个子串候选 -> 只列子串候选供用户选择，避免混入无关项
     """
     logger.info("Step 5: 开始对齐商品名 (Score Analysis)")
     
@@ -177,6 +251,47 @@ def step_5_align_item_names(query_results: List[Dict]) -> Dict:
         # 打印详细评分日志辅助调试
         top_matches_log = ", ".join([f"{m['item_name']}({m['score']:.3f})" for m in matches[:3]])
         logger.info(f"Step 5: '{extracted_name}' Top匹配: {top_matches_log}")
+
+        norm_query = _normalize_name(extracted_name)
+
+        # ---- 规则E: 归一化后完全相等（字面确认）----
+        if norm_query:
+            exact_matches = [m for m in matches if _normalize_name(m.get("item_name")) == norm_query]
+            if exact_matches:
+                best = max(exact_matches, key=lambda m: m.get("score", 0))
+                confirmed_item_names.append(best["item_name"])
+                logger.info(f"Step 5: 规则E命中 (Exact Normalized) -> 确认: {best['item_name']}")
+                continue
+
+            # ---- 统计子串包含关系 ----
+            sub_matches = []
+            seen_subs = set()
+            for m in matches:
+                ni = _normalize_name(m.get("item_name"))
+                if not ni:
+                    continue
+                if norm_query in ni or ni in norm_query:
+                    if ni not in seen_subs:
+                        seen_subs.add(ni)
+                        sub_matches.append(m)
+
+            # ---- 规则F: 唯一子串候选且分数达标 -> 直接确认 ----
+            if len(sub_matches) == 1:
+                only = sub_matches[0]
+                if only.get("score", 0) >= 0.6:
+                    confirmed_item_names.append(only["item_name"])
+                    logger.info(
+                        f"Step 5: 规则F命中 (Single Substring) -> 确认: {only['item_name']} "
+                        f"(Score={only.get('score', 0):.3f})"
+                    )
+                    continue
+
+            # ---- 规则G: 多个子串候选 -> 只列子串候选供选择 ----
+            if len(sub_matches) > 1:
+                candidates = [m.get("item_name") for m in sub_matches[:5]]
+                options.extend(candidates)
+                logger.info(f"Step 5: 规则G命中 (Multiple Substring Candidates) -> 候选: {candidates}")
+                continue
 
         # 筛选
         high = [m for m in matches if m.get("score", 0) > 0.85]
@@ -264,14 +379,22 @@ def step_6_check_confirmation(state: Dict, align_result: Dict, session_id: str, 
     if options:
         logger.info(f"Step 6: [分支B] 存在候选商品名: {options}")
         options_str = "、".join(options[:3])
-        answer = f"您是想问以下哪个产品：{options_str}？请明确一下型号。"
+        answer = pick(
+            state.get("original_query", ""),
+            f"您是想问以下哪个产品：{options_str}？请明确一下型号。",
+            f"Which of these products do you mean: {options_str}? Please specify the model."
+        )
         state["answer"] = answer
         state["item_names"] = []
         return state
 
     # 分支 C: 无结果
     logger.info("Step 6: [分支C] 无确认也无候选")
-    state["answer"] = "抱歉，未找到相关产品，请提供准确型号以便我为您查询。"
+    state["answer"] = pick(
+        state.get("original_query", ""),
+        "抱歉，未找到相关产品，请提供准确型号以便我为您查询。",
+        "Sorry, no matching product was found. Please provide the exact model so I can help you."
+    )
     state["item_names"] = []
     return state
 

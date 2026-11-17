@@ -29,7 +29,7 @@ minio.exe
 doc/*.zip
 
 # === Local deployment/debug docs (keep local only) ===
-本地调试与演示指南.md
-本地部署_环境搭建记录.md
-快速启动.md
-环境状态_2026-11-10.md
+files/本地调试与演示指南.md
+files/本地部署_环境搭建记录.md
+files/快速启动.md
+files/环境状态_2026-11-10.md

@@ -6,6 +6,7 @@ from app.core.logger import logger
 from app.core.load_prompt import load_prompt
 from app.lm.lm_utils import get_llm_client
 from app.clients.mongo_history_utils import save_chat_message
+from app.utils.lang_utils import pick
 import re
 
 _IMAGE_BLOCK_MARKER = "【图片】"
@@ -14,12 +15,17 @@ MAX_CONTEXT_CHARS = 12000
 def step_1_check_answer(state) -> bool:
   """
   阶段一：检查 state 中是否已有 answer。
-  - 若已存在：按需推送流式 delta（用于 SSE），并返回 True
+  - 若已存在：先清洗首尾空白，再按需推送流式 delta（用于 SSE），并返回 True
   - 若不存在：返回 False
   """
   answer = state.get("answer", None)
   is_stream = state.get("is_stream" )
   if answer:
+    # 清洗：去掉答案首尾空白，避免前端答案顶部出现空白间距
+    cleaned = _clean_answer(answer) or ""
+    if cleaned != answer:
+      state["answer"] = cleaned
+      answer = cleaned
     if is_stream:
       logger.info("---Step 1: 发现已有答案，执行流式推送---")
       push_to_session(state["session_id"], SSEEvent.DELTA, {"delta": answer})
@@ -156,19 +162,31 @@ def step_3_generate_response(state: QueryGraphState, prompt: str) -> QueryGraphS
   if is_stream:
     logger.info(f"模式: 流式输出 (Streaming), Session: {session_id}")
     final_text = ""
+    # 标识是否已经开始输出正文（用于过滤开头的空行/空格）
+    started = False
+    pending = ""
     try:
       # 使用 stream 方法进行流式生成
       for chunk in llm.stream(prompt):
         delta = getattr(chunk, "content", "") or ""
-        if delta:
-          final_text += delta
-          # 将增量内容放入队列
-          push_to_session(session_id, SSEEvent.DELTA, {"delta": delta})
+        if not delta:
+          continue
+        # 过滤开头的空白：在首个非空白字符出现前，只累积不推送
+        if not started:
+          pending += delta
+          stripped = pending.lstrip()
+          if not stripped:
+            continue
+          started = True
+          delta = stripped
+        final_text += delta
+        # 将增量内容放入队列
+        push_to_session(session_id, SSEEvent.DELTA, {"delta": delta})
       
       logger.info(f"流式输出完成，总长度: {len(final_text)}")
 
     except Exception as e:
-      logger.error(f"流式生成出错: {e}", exc_info=True)
+      logger.error("流式生成出错: {}", e, exc_info=True)
       # 发生错误时，尝试推送到前端
       push_to_session(session_id, SSEEvent.ERROR, {"error": str(e)})
       
@@ -183,24 +201,44 @@ def step_3_generate_response(state: QueryGraphState, prompt: str) -> QueryGraphS
       set_task_result(session_id, "answer", content)
       logger.info(f"生成回答完成，长度: {len(content)}")
     except Exception as e:
-      logger.error(f"生成回答出错: {e}", exc_info=True)
-      state["answer"] = "抱歉，生成回答时出现错误。"
+      logger.error("生成回答出错: {}", e, exc_info=True)
+      state["answer"] = pick(
+        state.get("original_query", ""),
+        "抱歉，生成回答时出现错误。",
+        "Sorry, an error occurred while generating the response."
+      )
 
   return state
+
+
+_IMG_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg")
+_URL_PATTERN = re.compile(r"https?://[^\s]+")
+_IMAGE_BLOCK_PATTERN = re.compile(r"【\s*图片\s*】|\[\s*图片\s*\]")
+
+
+def _normalize_img_url(url):
+    """
+    清理 URL 尾部可能混入的标点（与前端 extractUrlsLoose 保持一致）。
+    例如：xxx.jpg)  ->  xxx.jpg
+    """
+    return re.sub(r"[)\]}\'\uFF0C\u3002，。,;；】）＞]+$", "", url)
 
 
 def _extract_images_from_docs(docs):
     """
     辅助方法：从文档列表中提取图片URL
-    
+
     核心逻辑：
     1. 遍历所有相关文档（包括本地知识库切片和联网搜索结果）。
     2. 策略一：直接检查文档的 'url' 字段（常见于联网搜索结果）。
        - 验证后缀名是否为图片格式 (.jpg, .png 等)。
-    3. 策略二：使用正则表达式扫描文档 'text' 正文内容（常见于本地 Markdown 文档）。
-       - 匹配 Markdown 图片语法: ![alt text](image_url)。
+    3. 策略二：扫描文档 'text' 正文中的所有 http(s) 链接，
+       筛选出以图片后缀结尾的链接。
+       - 注意：不依赖于 Markdown 图片语法（![alt](url)）解析，
+         因为文件名中可能包含括号（如“华为擎云L420用户手册-(KelvinV,01,zh-cn)”），
+         正则中的括号截断会导致 URL 不完整。
     4. 对提取到的 URL 进行去重处理，返回唯一图片列表。
-    
+
     :param docs: 文档列表，每个文档为字典格式
     :return: 图片 URL 字符串列表
     """
@@ -208,18 +246,6 @@ def _extract_images_from_docs(docs):
     seen = set() # 用于去重，避免同一张图片重复出现
     if not docs:
         return []
-    # ---------------------------------------------------------
-    # 正则表达式解释：r'!\[.*?\]\((.*?)\)'
-    # 1. !\[   -> 匹配 Markdown 图片语法的开头 "![" (注意 [ 需要转义)
-    # 2. .*?   -> 非贪婪匹配图片描述文本 (Alt Text)，即 [] 中间的内容
-    # 3. \]    -> 匹配描述文本的结束符 "]"
-    # 4. \(    -> 匹配 URL 部分的开始符 "("
-    # 5. (.*?) -> 捕获组 (Group 1)：非贪婪匹配括号内的实际 URL 内容
-    # 6. \)    -> 匹配 URL 部分的结束符 ")"
-    # ( ... ) （不带反斜杠）：这就是 捕获组 。
-    # 它的作用是告诉程序：“虽然我匹配了整个 ![...](...) 结构，但我 只要 这括号里的内容”。
-    # ---------------------------------------------------------
-    md_img_pattern = re.compile(r'!\[.*?\]\((.*?)\)')
 
     logger.info(f"开始提取图片，待处理文档数: {len(docs)}")
 
@@ -228,31 +254,94 @@ def _extract_images_from_docs(docs):
         url = (doc.get("url") or "").strip()
         if url:
             # 简单后缀判断：确保是静态图片资源
-            if url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')):
-                if url not in seen:
-                    logger.debug(f"文档[{i}] 发现图片 URL (字段): {url}")
-                    seen.add(url)
-                    images.append(url)
+            if url.lower().endswith(_IMG_EXTENSIONS) and url not in seen:
+                logger.debug(f"文档[{i}] 发现图片 URL (字段): {url}")
+                seen.add(url)
+                images.append(url)
 
-        # 2. 检查 text 字段中的 Markdown 图片 (主要针对 Local Chunk)
+        # 2. 检查 text 字段中的全部 http(s) 链接 (主要针对 Local Chunk)
         text = (doc.get("text") or "").strip()
         if text:
-            # findall 机制解释：
-            # 正则表达式 r'!\[.*?\]\((.*?)\)' 中包含一个捕获组 (.*?)
-            # 当存在捕获组时，findall 只返回括号内匹配到的内容（即 URL），而不是整个 ![...](...) 字符串
-            # 示例：
-            # 输入 text: "参考图片 ![面板图](http://img.com/1.jpg) 如下"
-            # 返回 matches: ['http://img.com/1.jpg']
-            matches = md_img_pattern.findall(text)
-            for img_url in matches:
-                img_url = img_url.strip()
-                if img_url and img_url not in seen:
-                    logger.debug(f"文档[{i}] 正文发现 Markdown 图片: {img_url}")
+            for m in _URL_PATTERN.finditer(text):
+                img_url = _normalize_img_url(m.group(0))
+                if img_url.lower().endswith(_IMG_EXTENSIONS) and img_url not in seen:
+                    logger.debug(f"文档[{i}] 正文发现图片 URL: {img_url}")
                     seen.add(img_url)
                     images.append(img_url)
 
     logger.info(f"图片提取完成，共找到 {len(images)} 张唯一图片: {images}")
     return images
+
+
+def _strip_md_images(text):
+    """
+    移除正文中的 Markdown 图片语法 ![alt](url)。
+    采用逐字符扫描 + 括号配对的方式，避免文件名中含括号导致截断。
+    剩余文本中不保留 alt 描述，图片由 image_urls 单独渲染。
+    """
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        idx = text.find("![", i)
+        if idx == -1:
+            out.append(text[i:])
+            break
+        out.append(text[i:idx])
+        # 找 alt 结束与 URL 开始的 "](/(" 分隔符
+        j = text.find("](", idx + 2)
+        if j == -1:
+            out.append(text[idx:])
+            break
+        # 从 URL 起点向后做括号配对，找到真正闭合的 ")"
+        depth = 0
+        k = j + 2
+        close = -1
+        while k < n:
+            ch = text[k]
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                if depth == 0:
+                    close = k
+                    break
+                depth -= 1
+            k += 1
+        if close == -1:
+            out.append(text[idx:])
+            break
+        i = close + 1
+    return "".join(out)
+
+
+def _remove_image_block(text):
+    """
+    删除答案末尾的【图片】区块（标记以及其后的图片URL行），
+    仅保留最后一个标记（与前端 parseAnswerAndImages 行为一致）。
+    """
+    matches = list(_IMAGE_BLOCK_PATTERN.finditer(text))
+    if not matches:
+        return text
+    last = matches[-1]
+    return text[:last.start()].rstrip()
+
+
+def _clean_answer(answer):
+    """
+    清洗大模型原始输出：
+    1. 统一换行符为 \n
+    2. 移除正文中的 Markdown 图片语法 ![alt](url)
+    3. 删除末尾【图片】区块
+    4. 将连续 3 个及以上空行压缩为 2 个（段落间最多空一行）
+    5. 去除首尾空白（消除答案顶部空白）
+    """
+    if not answer:
+        return answer
+    text = answer.replace("\r\n", "\n").replace("\r", "\n")
+    text = _strip_md_images(text)
+    text = _remove_image_block(text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def step_4_write_history(state: QueryGraphState, image_urls = None) -> QueryGraphState:
@@ -277,7 +366,7 @@ def step_4_write_history(state: QueryGraphState, image_urls = None) -> QueryGrap
       )
   except Exception as e:
     # 写历史失败不应影响主链路
-    logger.error(f"写入Mongo历史记录失败: {e}")
+    logger.error("写入Mongo历史记录失败: {}", e)
 
   return state
 
@@ -311,6 +400,16 @@ def node_answer_output(state: QueryGraphState) -> QueryGraphState:
 
     # 阶段三：  如果没有answer则 调用大模型输出答案
     step_3_generate_response(state, prompt)
+
+  # 阶段三.5：清洗答案（去除 Markdown 图片语法、【图片】区块、多余空行与首尾空白）
+  # 这样写入历史、推送前端的答案都是干净文本，避免正文中出现 ![...](...) 链接
+  raw_answer = state.get("answer")
+  if raw_answer:
+    cleaned_answer = _clean_answer(raw_answer)
+    if cleaned_answer != raw_answer:
+      state["answer"] = cleaned_answer
+      if not state.get("is_stream"):
+        set_task_result(state["session_id"], "answer", cleaned_answer)
 
   # 提取图片URL（用于历史记录和前端展示）
   image_urls = _extract_images_from_docs(state.get("reranked_docs") or [])

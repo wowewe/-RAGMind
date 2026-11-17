@@ -342,10 +342,11 @@ def process_md_file(md_content: str, image_info: Dict[str, Tuple[str, str]]) -> 
             re.IGNORECASE
         )
         # 替换匹配内容：使用新摘要作为图片描述，新URL作为图片路径
-        # - 如果你的 summary 和 new_url 是完全可控的纯文本（不含反斜杠） ：这两种写法确实 一模一样 。
-        # - 如果你想写出“防御性代码”（Defensive Code），防止未来某天被特殊字符坑 ：请坚持使用 Lambda 写法 。它是最稳健、最安全的做法。
-        # md_content = pattern.sub(lambda m: f"![{summary}]({new_url})", md_content)
-        md_content = pattern.sub( f"![{summary}]({new_url})", md_content)
+        # 注意：必须使用 lambda 回调形式。re.sub 会将替换字符串中的反斜杠当作转义序列解析，
+        # 若摘要中包含本地路径（如 C:\xxx\img\fig.png，摘要里出现 \i 等），会触发 re.error: bad escape。
+        # 同时将摘要中的反斜杠统一为斜杠，避免生成脏路径。
+        safe_summary = summary.replace("\\", "/")
+        md_content = pattern.sub(lambda m: f"![{safe_summary}]({new_url})", md_content)
         logger.debug(f"完成MD图片引用替换：{img_filename} → {new_url}")
 
     logger.info(f"MD文件图片引用替换完成，共替换{len(image_info)}处图片引用")

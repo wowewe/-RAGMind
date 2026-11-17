@@ -174,7 +174,7 @@ def step_2_rerank_docs(state, doc_items):
         scored_docs.sort(key=lambda x: x["score"], reverse=True)
         return scored_docs
     except Exception as e:
-        logger.error(f"Step 2: 重排序过程发生异常: {e}", exc_info=True)
+        logger.error("Step 2: 重排序过程发生异常: {}", e, exc_info=True)
         # 出错时降级：返回原始文档顺序，分数置为 0 或 None
         # 避免整个流程中断
         fallback_docs = [

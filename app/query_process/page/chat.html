@@ -3,563 +3,582 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>RAGMind Knowledge Base</title>
+  <title>RAGMind · Chat</title>
   <style>
     :root{
-      --bg:#f3f5f7;
+      --bg:#eef1f6;
       --panel:#ffffff;
-      --text:#1f2d3d;
-      --muted:#7a869a;
+      --panel2:#f7f9fc;
+      --text:#17202a;
+      --muted:#68788c;
       --brand:#1aa7ff;
       --brand2:#5b7cfa;
-      --bubble-user:#1aa7ff;
-      --bubble-bot:#ffffff;
-      --border:#e6e9ef;
-      --shadow:0 10px 30px rgba(31,45,61,.12);
+      --bubble-user:linear-gradient(135deg,#1aa7ff,#5b7cfa);
+      --bubble-bot:#f2f5fa;
+      --border:#dfe5ee;
+      --ok:#0e9f6e;
+      --err:#e74c3c;
+      --warn:#c47d0f;
+      --shadow:0 16px 40px rgba(23,32,42,.14);
+      --chat-bg:linear-gradient(180deg, rgba(26,167,255,.05), transparent 38%),
+                 linear-gradient(0deg, rgba(91,124,250,.05), transparent 42%);
+    }
+    [data-theme="dark"]{
+      --bg:#0d1220;
+      --panel:#151c2e;
+      --panel2:#1b2438;
+      --text:#e8edf5;
+      --muted:#8b99ad;
+      --bubble-bot:#202b42;
+      --border:#2a3650;
+      --shadow:0 16px 40px rgba(0,0,0,.5);
+      --chat-bg:linear-gradient(180deg, rgba(26,167,255,.06), transparent 38%),
+                 linear-gradient(0deg, rgba(91,124,250,.06), transparent 42%);
     }
     *{box-sizing:border-box}
+    html,body{height:100%}
     body{
       margin:0;
-      font-family: "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, Arial, sans-serif;
-      background: radial-gradient(1200px 600px at 20% 0%, rgba(26,167,255,.18), transparent 60%),
-                  radial-gradient(1000px 500px at 90% 10%, rgba(91,124,250,.18), transparent 55%),
+      font-family:"Segoe UI","Microsoft YaHei",system-ui,-apple-system,Arial,sans-serif;
+      background: radial-gradient(1200px 600px at 15% 0%, rgba(26,167,255,.16), transparent 60%),
+                  radial-gradient(1000px 500px at 90% 10%, rgba(91,124,250,.16), transparent 55%),
                   var(--bg);
       color:var(--text);
-      height:100vh;
-      display:flex;
-      justify-content:center;
-      align-items:center;
-      padding:18px;
+      transition:background .3s, color .3s;
     }
     .app{
       width:100%;
-      max-width:980px;
-      height:min(820px, 92vh);
+      height:100%;
+      display:flex;
+      justify-content:center;
+      padding:18px;
+    }
+    .shell{
+      width:100%;
+      max-width:1180px;
+      height:min(860px, 94vh);
       background:var(--panel);
       border:1px solid var(--border);
-      border-radius:16px;
+      border-radius:20px;
       box-shadow:var(--shadow);
-      overflow:hidden;
       display:flex;
       flex-direction:column;
+      overflow:hidden;
     }
+    /* ---------- Top bar ---------- */
     .topbar{
       display:flex;
       align-items:center;
-      gap:12px;
-      padding:14px 18px;
+      gap:14px;
+      padding:14px 20px;
       border-bottom:1px solid var(--border);
-      background:linear-gradient(90deg, rgba(26,167,255,.10), rgba(91,124,250,.10));
+      background:linear-gradient(90deg, rgba(26,167,255,.08), rgba(91,124,250,.08));
     }
-    .brand{
-      display:flex;
-      align-items:center;
-      gap:10px;
-      min-width:240px;
-    }
+    .brand{display:flex;align-items:center;gap:12px;min-width:0}
     .logo{
-      width:36px;height:36px;border-radius:10px;
+      width:38px;height:38px;border-radius:11px;
       background:linear-gradient(135deg, var(--brand), var(--brand2));
-      box-shadow:0 8px 18px rgba(26,167,255,.25);
-    }
-    .title{
-      display:flex;
-      flex-direction:column;
-      line-height:1.1;
-    }
-    .title strong{font-size:14px}
-    .title span{font-size:12px;color:var(--muted);margin-top:3px}
-    .top-actions{
-      margin-left:auto;
-      display:flex;
-      gap:10px;
-      align-items:center;
-    }
-    .pill{
-      font-size:12px;
-      color:var(--muted);
-      border:1px solid var(--border);
-      padding:6px 10px;
-      border-radius:999px;
-      background:#fff;
-    }
-    .btn{
-      border:none;
-      background:linear-gradient(135deg, var(--brand), var(--brand2));
-      color:#fff;
-      padding:8px 12px;
-      border-radius:10px;
-      font-size:12px;
-      cursor:pointer;
-    }
-    .btn:disabled{opacity:.6;cursor:not-allowed}
-
-    .chat{
-      flex:1;
-      overflow:auto;
-      padding:16px 14px 10px;
-      background:linear-gradient(180deg, rgba(26,167,255,.05), transparent 40%),
-                 linear-gradient(0deg, rgba(91,124,250,.05), transparent 45%);
-    }
-    .dayline{
-      text-align:center;
-      color:var(--muted);
-      font-size:12px;
-      margin:6px 0 14px;
-    }
-    .msg{
-      display:flex;
-      gap:10px;
-      margin:10px 0;
-      align-items:flex-end;
-    }
-    .msg.user{justify-content:flex-end}
-    /* key: only the message-content container (excluding avatar) is allowed to stretch
-       within flex so it won't be squeezed to one-character width and wrap vertically */
-    .msg > div:not(.avatar){
-      flex:1;
-      min-width:0;
-    }
-    .msg.user > div:not(.avatar){
-      display:flex;
-      flex-direction:column;
-      align-items:flex-end;
-    }
-    .avatar{
-      width:34px;height:34px;border-radius:10px;
-      background:#e9eef7;
       display:flex;align-items:center;justify-content:center;
-      font-size:14px;
-      color:#3b4a5a;
+      color:#fff;font-weight:700;font-size:18px;
+      box-shadow:0 8px 18px rgba(26,167,255,.3);
       flex:0 0 auto;
     }
-    .avatar.bot{background:linear-gradient(135deg, rgba(26,167,255,.18), rgba(91,124,250,.18))}
-    .bubble{
-      max-width:min(720px, 76%);
-      display:inline-block;
-      border-radius:14px;
-      padding:10px 12px;
-      border:1px solid var(--border);
-      background:var(--bubble-bot);
-      position:relative;
-      line-height:1.55;
-      font-size:14px;
-      white-space:pre-wrap;
-      overflow-wrap: break-word;
+    .title{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+    .title strong{font-size:15px;letter-spacing:.2px}
+    .title span{font-size:12px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:6px}
+    .status-dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+    .status-dot.on{background:var(--ok);box-shadow:0 0 0 3px rgba(14,159,110,.18)}
+    .status-dot.off{background:var(--err)}
+    .top-actions{margin-left:auto;display:flex;gap:10px;align-items:center}
+    .icon-btn{
+      border:1px solid var(--border);background:var(--panel);
+      color:var(--muted);width:34px;height:34px;border-radius:10px;
+      display:flex;align-items:center;justify-content:center;
+      cursor:pointer;font-size:15px;transition:color .15s, border-color .15s;
     }
-    .msg.user .bubble{
-      background:var(--bubble-user);
-      color:#fff;
-      border-color:transparent;
+    .icon-btn:hover{color:var(--brand);border-color:rgba(26,167,255,.5)}
+    .mode-switch{
+      display:flex;align-items:center;gap:6px;
+      font-size:12px;color:var(--muted);
+      border:1px solid var(--border);background:var(--panel);
+      padding:6px 12px;border-radius:999px;cursor:pointer;user-select:none;
     }
-    .meta{
-      font-size:11px;
-      color:var(--muted);
-      margin-top:6px;
-    }
-    .msg.user .meta{color:rgba(255,255,255,.85)}
-    details.progress{
-      margin-top:8px;
-      border:1px dashed rgba(122,134,154,.45);
-      border-radius:12px;
-      padding:8px 10px;
-      background:rgba(122,134,154,.06);
-    }
-    details.progress summary{
-      cursor:pointer;
-      user-select:none;
-      color:var(--muted);
-      font-size:12px;
-    }
-    .progress ul{margin:8px 0 0 18px;padding:0}
-    .progress li{margin:4px 0;font-size:12px;color:#56657a}
-
-    .answer-images{
-      margin-top:10px;
-      display:flex;
-      flex-direction:column;
+    .mode-switch input{display:none}
+    .mode-switch .dot2{width:14px;height:14px;border-radius:50%;border:2px solid var(--muted);position:relative}
+    .mode-switch input:checked + .dot2{background:var(--brand);border-color:var(--brand)}
+    /* ---------- Body ---------- */
+    .body{flex:1;display:flex;min-height:0}
+    /* Sidebar */
+    .sidebar{
+      width:232px;flex:0 0 auto;
+      border-right:1px solid var(--border);
+      background:var(--panel2);
+      display:flex;flex-direction:column;
+      padding:14px;
       gap:10px;
     }
+    .new-chat{
+      border:none;cursor:pointer;
+      background:linear-gradient(135deg, var(--brand), var(--brand2));
+      color:#fff;font-size:13px;font-weight:600;
+      padding:11px 14px;border-radius:12px;
+      display:flex;align-items:center;justify-content:center;gap:8px;
+      box-shadow:0 8px 18px rgba(26,167,255,.25);
+      transition:transform .12s, box-shadow .12s;
+    }
+    .new-chat:hover{transform:translateY(-1px);box-shadow:0 10px 22px rgba(26,167,255,.32)}
+    .sess-label{font-size:11px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin:6px 4px 0}
+    .sess-list{flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px}
+    .sess{
+      border:1px solid transparent;background:transparent;
+      border-radius:10px;padding:9px 11px;cursor:pointer;
+      text-align:left;display:flex;flex-direction:column;gap:3px;
+      transition:background .15s, border-color .15s;
+    }
+    .sess:hover{background:var(--panel)}
+    .sess.active{background:var(--panel);border-color:rgba(26,167,255,.4)}
+    .sess .s-title{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .sess .s-meta{font-size:11px;color:var(--muted)}
+    .sess .s-del{
+      margin-left:auto;border:none;background:transparent;color:var(--muted);
+      cursor:pointer;font-size:12px;border-radius:6px;padding:2px 6px;
+      visibility:hidden;
+    }
+    .sess:hover .s-del{visibility:visible}
+    .sess .s-del:hover{color:var(--err);background:rgba(231,76,60,.1)}
+    .sess .s-top{display:flex;align-items:center;gap:6px}
+    /* Main */
+    .main{flex:1;display:flex;flex-direction:column;min-width:0}
+    .chat{
+      flex:1;overflow:auto;
+      padding:22px 24px 8px;
+      background:var(--chat-bg);
+    }
+    .chat::-webkit-scrollbar{width:8px}
+    .chat::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+    /* Welcome */
+    .welcome{
+      max-width:720px;margin:0 auto;
+      padding-top:12vh;text-align:center;
+      animation:fadeUp .35s ease;
+    }
+    @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    .welcome h1{font-size:24px;margin:0 0 8px;letter-spacing:.3px}
+    .welcome p{color:var(--muted);font-size:14px;margin:0 0 26px}
+    /* Messages */
+    .msg{display:flex;gap:12px;margin:14px 0;align-items:flex-start;animation:fadeUp .25s ease}
+    .msg.user{justify-content:flex-end}
+    .avatar{
+      width:36px;height:36px;border-radius:11px;flex:0 0 auto;
+      display:flex;align-items:center;justify-content:center;
+      font-size:11px;font-weight:700;letter-spacing:.3px;
+      background:linear-gradient(135deg, rgba(26,167,255,.16), rgba(91,124,250,.16));
+      color:var(--brand);border:1px solid rgba(26,167,255,.25);
+    }
+    .msg.user .avatar{background:linear-gradient(135deg, var(--brand), var(--brand2));color:#fff;border-color:transparent}
+    .col{max-width:min(720px,78%);min-width:0;display:flex;flex-direction:column;align-self:flex-start}
+    .msg.user .col{align-items:flex-end}
+    .bubble{
+      display:inline-block;border-radius:16px;padding:12px 15px;
+      background:var(--bubble-bot);border:1px solid var(--border);
+      line-height:1.6;font-size:14px;
+      white-space:pre-wrap;overflow-wrap:break-word;
+      max-width:100%;
+    }
+    .msg.user .bubble{background:var(--bubble-user);color:#fff;border-color:transparent}
+    .meta{font-size:11px;color:var(--muted);margin-top:6px;display:flex;gap:8px;align-items:center;padding:0 4px}
+    .msg.user .meta{color:var(--muted)}
+    .answer-text{white-space:pre-wrap;overflow-wrap:break-word}
+    .answer-images{margin-top:12px;display:flex;flex-direction:column;gap:10px}
     .answer-images img{
-      display: block;
-      max-width: min(100%, 600px);
-      max-height: 600px;
-      width: auto;
-      height: auto;
-      border-radius:12px;
-      border:1px solid var(--border);
-      box-shadow:0 10px 24px rgba(31,45,61,.10);
+      display:block;max-width:min(100%,560px);max-height:560px;
+      border-radius:12px;border:1px solid var(--border);
+      box-shadow:0 10px 24px rgba(23,32,42,.12);
       background:#fff;
     }
-    .answer-images a{
-      font-size:12px;
-      color:var(--muted);
-      text-decoration:none;
-      word-break:break-all;
+    .answer-images a{font-size:12px;color:var(--muted);text-decoration:none;word-break:break-all}
+    /* Action row */
+    .actions{display:flex;gap:6px;margin-top:8px;padding:0 4px}
+    .mini-btn{
+      border:1px solid var(--border);background:var(--panel);
+      color:var(--muted);font-size:12px;
+      padding:4px 10px;border-radius:8px;cursor:pointer;
+      transition:color .15s, border-color .15s;
     }
-
-    .typing{
-      display:inline-flex;gap:6px;align-items:center;
-    }
-    .dot{
-      width:7px;height:7px;border-radius:50%;
-      background:#9aa6b2;
-      animation:bounce 1.2s infinite ease-in-out;
-    }
+    .mini-btn:hover{color:var(--brand);border-color:rgba(26,167,255,.5)}
+    .mini-btn.danger:hover{color:var(--err);border-color:rgba(231,76,60,.5)}
+    /* Typing */
+    .typing{display:inline-flex;gap:5px;align-items:center;padding:2px 0}
+    .dot{width:7px;height:7px;border-radius:50%;background:#9aa6b2;animation:bounce 1.2s infinite ease-in-out}
     .dot:nth-child(2){animation-delay:.15s}
     .dot:nth-child(3){animation-delay:.3s}
-    @keyframes bounce{
-      0%,80%,100%{transform:translateY(0);opacity:.6}
-      40%{transform:translateY(-5px);opacity:1}
+    @keyframes bounce{0%,80%,100%{transform:translateY(0);opacity:.6}40%{transform:translateY(-5px);opacity:1}}
+    /* Stage chips */
+    .stages{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px}
+    .stage{
+      font-size:12px;padding:4px 11px;border-radius:999px;
+      border:1px solid var(--border);background:var(--panel);
+      color:var(--muted);display:inline-flex;align-items:center;gap:6px;
     }
-
-    .composer{
+    .stage.done{color:#0e9f6e;border-color:rgba(14,159,110,.35);background:rgba(14,159,110,.07)}
+    .stage.active{color:var(--brand);border-color:rgba(26,167,255,.45);background:rgba(26,167,255,.08)}
+    .stage.active .spinner{width:10px;height:10px;border:2px solid rgba(26,167,255,.3);border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .stage.err{color:var(--err);border-color:rgba(231,76,60,.4);background:rgba(231,76,60,.06)}
+    /* Composer */
+    .composer-wrap{
       border-top:1px solid var(--border);
-      padding:12px 14px;
-      display:flex;
-      gap:10px;
-      align-items:flex-end;
-      background:#fff;
+      background:var(--panel);
+      padding:14px 20px 12px;
+    }
+    .composer{
+      display:flex;gap:10px;align-items:flex-end;
+      max-width:900px;margin:0 auto;
     }
     textarea{
-      flex:1;
-      resize:none;
-      min-height:44px;
-      max-height:140px;
-      padding:10px 12px;
-      border-radius:12px;
+      flex:1;resize:none;
+      min-height:46px;max-height:150px;
+      padding:12px 14px;
+      border-radius:14px;
       border:1px solid var(--border);
-      outline:none;
-      font-size:14px;
-      line-height:1.5;
+      background:var(--panel2);
+      color:var(--text);
+      outline:none;font-size:14px;line-height:1.5;font-family:inherit;
     }
-    textarea:focus{border-color:rgba(26,167,255,.6); box-shadow:0 0 0 3px rgba(26,167,255,.12)}
+    textarea:focus{border-color:rgba(26,167,255,.6);box-shadow:0 0 0 3px rgba(26,167,255,.12)}
+    textarea::placeholder{color:var(--muted)}
     .send{
-      width:88px;
-      height:44px;
-      border:none;
-      border-radius:12px;
-      cursor:pointer;
-      font-size:14px;
-      color:#fff;
+      height:46px;padding:0 22px;
+      border:none;border-radius:14px;cursor:pointer;
+      font-size:14px;font-weight:600;color:#fff;
       background:linear-gradient(135deg, var(--brand), var(--brand2));
+      box-shadow:0 8px 18px rgba(26,167,255,.25);
+      transition:transform .12s, opacity .15s;
     }
-    .send:disabled{opacity:.6;cursor:not-allowed}
+    .send:hover:not(:disabled){transform:translateY(-1px)}
+    .send:disabled{opacity:.55;cursor:not-allowed}
     .hint{
-      padding:0 14px 12px;
-      color:var(--muted);
-      font-size:12px;
-      background:#fff;
+      max-width:900px;margin:10px auto 0;
+      color:var(--muted);font-size:12px;
+      display:flex;align-items:center;gap:6px;
     }
     .kbd{
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      border:1px solid var(--border);
-      padding:1px 6px;
-      border-radius:6px;
-      background:#f7f9fc;
-      color:#3b4a5a;
+      font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      border:1px solid var(--border);padding:1px 6px;border-radius:6px;
+      background:var(--panel2);color:var(--muted);
+    }
+    .toast{
+      position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(10px);
+      background:var(--text);color:var(--bg);
+      font-size:13px;padding:9px 18px;border-radius:999px;
+      opacity:0;pointer-events:none;transition:opacity .2s, transform .2s;z-index:99;
+    }
+    .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+    @media (max-width:760px){
+      .app{padding:0}
+      .shell{height:100vh;max-height:none;border-radius:0;border:none}
+      .sidebar{display:none}
     }
   </style>
 </head>
 <body>
   <div class="app">
-    <div class="topbar">
-      <div class="brand">
-        <div class="logo"></div>
-        <div class="title">
-          <strong>RAGMind Knowledge Base</strong>
-          <span id="subTitle">Online · Searchable knowledge base &amp; live web info</span>
+    <div class="shell">
+      <div class="topbar">
+        <div class="brand">
+          <div class="logo">R</div>
+          <div class="title">
+            <strong>RAGMind</strong>
+            <span><span class="status-dot" id="statusDot"></span><span id="statusText">Connecting…</span></span>
+          </div>
+        </div>
+        <div class="top-actions">
+          <label class="mode-switch" title="Streaming output">
+            <input type="checkbox" id="streamToggle" checked>
+            <span class="dot2"></span>Stream
+          </label>
+          <button class="icon-btn" id="btnClear" title="Clear current chat">🗑</button>
+          <button class="icon-btn" id="btnTheme" title="Toggle theme">🌓</button>
         </div>
       </div>
-      <div class="top-actions">
-        <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none;color:var(--muted);margin-right:10px;">
-          <input type="checkbox" id="streamToggle" checked> Streaming output
-        </label>
-        <span class="pill" id="apiPill">API: Not connected</span>
-        <button class="btn" id="btnClear">Clear chat</button>
+
+      <div class="body">
+        <aside class="sidebar">
+          <button class="new-chat" id="btnNew">＋ New chat</button>
+          <div class="sess-label">Sessions</div>
+          <div class="sess-list" id="sessList"></div>
+        </aside>
+
+        <main class="main">
+          <div class="chat" id="chat"></div>
+
+          <div class="composer-wrap">
+            <div class="composer">
+              <textarea id="input" rows="1" placeholder="Ask about your knowledge base… (Enter to send, Shift+Enter for new line)"></textarea>
+              <button class="send" id="send">Send</button>
+            </div>
+            <div class="hint">
+              <span class="kbd">Enter</span> send · <span class="kbd">Shift</span>+<span class="kbd">Enter</span> new line
+            </div>
+          </div>
+        </main>
       </div>
     </div>
-
-    <div class="chat" id="chat">
-      <div class="dayline">Today</div>
-      <div class="msg bot">
-        <div class="avatar bot">RAGMind</div>
-        <div>
-          <div class="bubble">Hello, I'm RAGMind, your knowledge base assistant. Ask me anything — I'll show my progress under "Stage Progress".</div>
-          <div class="meta">Tip: try asking "How do I measure voltage with a multimeter?"</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="composer">
-      <textarea id="input" placeholder="Type your question (Enter to send, Shift+Enter for new line)"></textarea>
-      <button class="send" id="send">Send</button>
-    </div>
-    <div class="hint">Shortcuts: <span class="kbd">Enter</span> send, <span class="kbd">Shift</span>+<span class="kbd">Enter</span> new line</div>
   </div>
 
+  <div class="toast" id="toast"></div>
+
   <script>
-    // Same-origin by default; if you open this page standalone (file://), change to http://127.0.0.1:8001
     const API_BASE = `${location.protocol}//${location.host}`.includes('http') ? `${location.protocol}//${location.host}` : 'http://127.0.0.1:8001';
+    const SESS_KEY = 'ragmind_sessions';
+    const CUR_KEY = 'ragmind_current_session';
+
     const chatEl = document.getElementById('chat');
     const inputEl = document.getElementById('input');
     const sendBtn = document.getElementById('send');
-    const apiPill = document.getElementById('apiPill');
     const btnClear = document.getElementById('btnClear');
+    const btnNew = document.getElementById('btnNew');
+    const btnTheme = document.getElementById('btnTheme');
     const streamToggle = document.getElementById('streamToggle');
+    const sessListEl = document.getElementById('sessList');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const toastEl = document.getElementById('toast');
 
-    // Session ID Logic
-    let sessionId = localStorage.getItem('kb_session_id');
-    if (!sessionId) {
-      sessionId = 'sess-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-      localStorage.setItem('kb_session_id', sessionId);
+    // ---------- theme ----------
+    if (localStorage.getItem('ragmind_theme') === 'dark') {
+      document.documentElement.dataset.theme = 'dark';
+    }
+    btnTheme.addEventListener('click', () => {
+      const dark = document.documentElement.dataset.theme === 'dark';
+      if (dark) {
+        delete document.documentElement.dataset.theme;
+        localStorage.setItem('ragmind_theme', 'light');
+      } else {
+        document.documentElement.dataset.theme = 'dark';
+        localStorage.setItem('ragmind_theme', 'dark');
+      }
+    });
+
+    // ---------- session store ----------
+    function loadSessions(){
+      try { return JSON.parse(localStorage.getItem(SESS_KEY) || '{}'); }
+      catch(e) { return {}; }
+    }
+    function saveSessions(map){
+      localStorage.setItem(SESS_KEY, JSON.stringify(map));
+    }
+    function currentSession(){
+      let id = localStorage.getItem(CUR_KEY);
+      if (!id) {
+        // migrate from the previous design's key so existing history keeps loading
+        const legacy = localStorage.getItem('kb_session_id');
+        id = legacy || newSessionId();
+        localStorage.setItem(CUR_KEY, id);
+      }
+      return id;
+    }
+    function newSessionId(){
+      return 'sess-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+    function touchSession(id, title){
+      const map = loadSessions();
+      map[id] = { title: title || map[id]?.title || 'New chat', ts: Date.now() };
+      saveSessions(map);
+    }
+
+    // ---------- session list ----------
+    function renderSessions(){
+      const map = loadSessions();
+      const cur = currentSession();
+      const ids = Object.keys(map).sort((a,b) => (map[b].ts||0) - (map[a].ts||0));
+      if (ids.length === 0 || !map[cur]) {
+        sessListEl.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:4px">No saved sessions yet</div>';
+        return;
+      }
+      sessListEl.innerHTML = '';
+      for (const id of ids) {
+        const s = map[id];
+        const el = document.createElement('div');
+        el.className = 'sess' + (id === cur ? ' active' : '');
+        const d = new Date(s.ts);
+        const time = d.toLocaleDateString('en-US', {month:'short', day:'numeric'}) + ' ' +
+                     d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
+        el.innerHTML = `
+          <div class="s-top">
+            <span class="s-title">${escapeHtml(s.title)}</span>
+            <button class="s-del" title="Delete session">✕</button>
+          </div>
+          <span class="s-meta">${time}</span>`;
+        el.querySelector('.s-del').addEventListener('click', (e) => {
+          e.stopPropagation();
+          const map2 = loadSessions();
+          delete map2[id];
+          saveSessions(map2);
+          if (id === cur) {
+            const keys = Object.keys(map2);
+            keys.length ? switchSession(keys[0]) : startNewChat();
+          } else {
+            renderSessions();
+          }
+        });
+        el.addEventListener('click', () => switchSession(id));
+        sessListEl.appendChild(el);
+      }
+    }
+
+    function switchSession(id){
+      localStorage.setItem(CUR_KEY, id);
+      renderSessions();
+      resetChatView();
+      loadHistory();
+    }
+
+    function startNewChat(){
+      const id = newSessionId();
+      localStorage.setItem(CUR_KEY, id);
+      touchSession(id);
+      renderSessions();
+      resetChatView();
+      renderWelcome();
+    }
+
+    // ---------- chat view ----------
+    function resetChatView(){
+      chatEl.innerHTML = '';
+      scrollToBottom();
     }
 
     function scrollToBottom(){
       chatEl.scrollTop = chatEl.scrollHeight;
     }
+
     function nowTime(){
-      const d = new Date();
-      return d.toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'});
+      return new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
     }
     function formatTime(ts){
-      if(!ts) return nowTime();
+      if (!ts) return nowTime();
       const d = new Date(Number(ts) * 1000);
-      if(Number.isNaN(d.getTime())) return nowTime();
-      return d.toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'});
-    }
-    function escapeHtml(str){
-      return String(str)
-        .replaceAll('&','&amp;')
-        .replaceAll('<','&lt;')
-        .replaceAll('>','&gt;')
-        .replaceAll('"','&quot;')
-        .replaceAll("'","&#039;");
+      if (Number.isNaN(d.getTime())) return nowTime();
+      return d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
     }
 
+    function escapeHtml(str){
+      return String(str)
+        .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
+        .replaceAll('"','&quot;').replaceAll("'","&#039;");
+    }
+
+    function renderWelcome(){
+      chatEl.innerHTML = `
+        <div class="welcome">
+          <h1>Ask your knowledge base</h1>
+          <p>Questions are answered from your imported documents, with live web search when needed.</p>
+        </div>`;
+    }
+
+    // ---------- images ----------
     function isImageUrl(url){
-      // Be lenient: some URLs may carry trailing parameters.
-      // Match if the path ends with an image extension, followed by ? # end, or a truncated punctuation.
       try {
         const u = new URL(url);
         return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(u.pathname);
-      } catch (e) {
-        // If new URL fails (relative path or illegal chars), fall back to regex.
+      } catch(e){
         return /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(url || '');
       }
     }
-
     function normalizeUrl(rawUrl){
-      const s = String(rawUrl || '').trim();
-      if(!s) return '';
-      // Keep the original URL but encode spaces so img src doesn't fail.
-      return s.replace(/\s/g, '%20');
+      return String(rawUrl || '').trim().replace(/\s/g, '%20');
     }
-
     function dedupeKeepOrder(arr){
-      const seen = new Set();
-      const out = [];
-      for(const x of (Array.isArray(arr) ? arr : [])){
-        const v = String(x || '');
-        if(!v) continue;
-        if(seen.has(v)) continue;
-        seen.add(v);
-        out.push(v);
+      const seen = new Set(); const out = [];
+      for (const x of (Array.isArray(arr) ? arr : [])) {
+        const v = String(x || ''); if (!v || seen.has(v)) continue;
+        seen.add(v); out.push(v);
       }
       return out;
     }
-
     function extractUrlsLoose(text){
       const s = String(text || '');
-      // Simple regex: match http/https prefixes up to the next whitespace.
       const regex = /(https?:\/\/[^\s]+)/g;
-      const matches = s.match(regex) || [];
       const urls = [];
-      
-      // Trim leading/trailing punctuation
-      const trimTailPunct = (u) => String(u || '').replace(/[)\]}'">，。,;；\]】）＞]+$/g, '');
-      const trimHeadPunct = (u) => String(u || '').replace(/^[<([{'"]+|^[＜（【\[]+/g, '');
-
-      for(const m of matches){
-        let u = trimHeadPunct(trimTailPunct(m));
-        if(u) urls.push(u);
+      const trimTail = (u) => String(u || '').replace(/[)\]}'">，。,;；\]】）＞]+$/g, '');
+      const trimHead = (u) => String(u || '').replace(/^[<([{'"]+|^[＜（【\[]+/g, '');
+      for (const m of s.match(regex) || []) {
+        const u = trimHead(trimTail(m));
+        if (u) urls.push(u);
       }
       return dedupeKeepOrder(urls);
     }
-
-    function parseImagesFromTextLoosely(text){
-      const urls = extractUrlsLoose(text).filter(isImageUrl);
-      return dedupeKeepOrder(urls);
-    }
-
     function findLastImageMarkerIndex(raw){
       const s = String(raw || '');
-      // Support marker variants: 【图片】、【 图片 】、[图片]、[ 图片 ]
       const re = /【\s*图片\s*】|\[\s*图片\s*\]/g;
-      let m;
-      let lastIdx = -1;
-      let lastLen = 0;
-      while((m = re.exec(s)) !== null){
-        lastIdx = m.index;
-        lastLen = m[0].length;
-      }
+      let m, lastIdx = -1, lastLen = 0;
+      while ((m = re.exec(s)) !== null) { lastIdx = m.index; lastLen = m[0].length; }
       return { idx: lastIdx, len: lastLen };
     }
-
     function parseAnswerAndImages(text){
       const raw = String(text || '');
       const { idx, len } = findLastImageMarkerIndex(raw);
-      if(idx === -1) return { text: raw, images: [] };
-
+      if (idx === -1) return { text: raw, images: [] };
       const before = raw.slice(0, idx).trimEnd();
       const after = raw.slice(idx + len).trim();
       const urls = [];
-
-      // Prefer parsing one URL per line, allowing spaces inside URLs.
-      const lines = after.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      for(const line of lines){
-        if(line.startsWith('http://') || line.startsWith('https://')){
-          urls.push(line);
-        }else{
-          // Fallback: multiple URLs on one line.
-          const matches = extractUrlsLoose(line);
-          for(const u of matches){
-            urls.push(u);
-          }
-        }
+      for (const line of after.split(/\r?\n/).map(l => l.trim()).filter(Boolean)) {
+        if (/^https?:\/\//.test(line)) urls.push(line);
+        else urls.push(...extractUrlsLoose(line));
       }
-
-      // Dedupe keeping order + filter image links
-      const seen = new Set();
-      const images = [];
-      for(const u of urls){
+      const seen = new Set(); const images = [];
+      for (const u of urls) {
         const normalized = normalizeUrl(u);
-        if(!isImageUrl(normalized)) continue;
-        if(seen.has(normalized)) continue;
-        seen.add(normalized);
-        images.push(normalized);
+        if (!isImageUrl(normalized) || seen.has(normalized)) continue;
+        seen.add(normalized); images.push(normalized);
       }
       return { text: before, images };
     }
-
-    function shouldShowImagesByAnswer(answerText){
-      const t = String(answerText || '');
-      // Phrases commonly indicating an image should be shown
-      const keywords = [
-        '如图', '如下图', '见图', '见下图', '下图', '上图',
-        '图片', '示意图', '结构图', '外观', '接线图', '电路图', '原理图', '安装图', '尺寸图', '截图'
-      ];
-      return keywords.some(k => t.includes(k));
+    function compressBlankLines(text) {
+      return text.replace(/\n{3,}/g, '\n\n');
     }
-
     function renderAnswerWithImages(containerEl, answerText, candidateImageUrls){
-      const { text, images: imagesFromBlock } = parseAnswerAndImages(answerText);
-      const candidates = Array.isArray(candidateImageUrls)
-        ? candidateImageUrls.map(normalizeUrl).filter(isImageUrl)
-        : [];
-      const hasBlockImages = imagesFromBlock && imagesFromBlock.length > 0;
-      
-      // Loose extraction fallback
-      const looseImages = extractUrlsLoose(answerText).map(normalizeUrl).filter(isImageUrl);
-      
-      // Show images whenever backend provides candidates (even if the answer text
-      // doesn't say "as shown"), or when image URLs were extracted from text.
-      const shouldShow = hasBlockImages || (candidates.length > 0) || (looseImages.length > 0);
-      
-      // Precedence: explicit block markers > backend candidates > loose text extraction.
-      // Note: union them to avoid losing any.
-      const allImages = new Set([
-          ...(hasBlockImages ? imagesFromBlock : []),
-          ...candidates,
-          ...looseImages
-      ]);
-      const images = Array.from(allImages);
+      const { text, images: imgBlock } = parseAnswerAndImages(answerText);
+      const candidates = Array.isArray(candidateImageUrls) ? candidateImageUrls.map(normalizeUrl).filter(isImageUrl) : [];
+      const loose = extractUrlsLoose(answerText).map(normalizeUrl).filter(isImageUrl);
+      const images = dedupeKeepOrder([...imgBlock, ...candidates, ...loose]);
 
-      containerEl.textContent = '';
+      containerEl.innerHTML = '';
+      const textEl = document.createElement('div');
+      textEl.className = 'answer-text';
+      textEl.textContent = (text || '').trim() ? compressBlankLines((text || '').trimStart()) : '(completed)';
+      containerEl.appendChild(textEl);
 
-      if((text || '').trim().length > 0){
-        const textEl = document.createElement('div');
-        textEl.className = 'answer-text';
-        textEl.textContent = text;
-        containerEl.appendChild(textEl);
-      }else{
-        const textEl = document.createElement('div');
-        textEl.className = 'answer-text';
-        textEl.textContent = '(Completed, but no answer returned)';
-        containerEl.appendChild(textEl);
-      }
-
-      if(images && images.length > 0){
-        const imgWrap = document.createElement('div');
-        imgWrap.className = 'answer-images';
-        for(const url of images){
-          const safeUrl = normalizeUrl(url);
+      if (images.length > 0) {
+        const wrap = document.createElement('div');
+        wrap.className = 'answer-images';
+        for (const url of images) {
+          const safe = normalizeUrl(url);
           const img = document.createElement('img');
-          img.loading = 'lazy';
-          img.src = safeUrl;
-          img.alt = 'reference image';
+          img.loading = 'lazy'; img.src = safe; img.alt = 'reference image';
           img.referrerPolicy = 'no-referrer';
-          img.addEventListener('error', () => {
-            img.style.display = 'none';
-          });
-          imgWrap.appendChild(img);
-
-          const link = document.createElement('a');
-          link.href = safeUrl;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.textContent = url;
-          imgWrap.appendChild(link);
+          img.addEventListener('error', () => { img.style.display = 'none'; });
+          wrap.appendChild(img);
+          const a = document.createElement('a');
+          a.href = safe; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = url;
+          wrap.appendChild(a);
         }
-        containerEl.appendChild(imgWrap);
+        containerEl.appendChild(wrap);
       }
     }
 
-    function addUserMsg(text){
+    // ---------- messages ----------
+    function addUserMsg(text, ts){
       const html = `
         <div class="msg user">
-          <div>
-            <div class="bubble">${escapeHtml(text)}</div>
-            <div class="meta">${nowTime()}</div>
-          </div>
-          <div class="avatar">Me</div>
-        </div>
-      `;
-      chatEl.insertAdjacentHTML('beforeend', html);
-      scrollToBottom();
-    }
-
-    function addUserMsgWithTime(text, ts){
-      const html = `
-        <div class="msg user">
-          <div>
+          <div class="col">
             <div class="bubble">${escapeHtml(text)}</div>
             <div class="meta">${formatTime(ts)}</div>
           </div>
-          <div class="avatar">Me</div>
-        </div>
-      `;
+          <div class="avatar">YOU</div>
+        </div>`;
       chatEl.insertAdjacentHTML('beforeend', html);
-      scrollToBottom();
-    }
-
-    function addBotMsgWithTime(text, ts, imageUrls){
-      const id = 'bot-his-' + Math.random().toString(36).slice(2);
-      const html = `
-        <div class="msg bot" id="${id}">
-          <div class="avatar bot">RAGMind</div>
-          <div>
-            <div class="bubble"><div class="answer"></div></div>
-            <div class="meta">${formatTime(ts)}</div>
-          </div>
-        </div>
-      `;
-      chatEl.insertAdjacentHTML('beforeend', html);
-      const el = document.getElementById(id);
-      if(el){
-        const answerEl = el.querySelector('.answer');
-        renderAnswerWithImages(answerEl, text || '', imageUrls || []);
-      }
       scrollToBottom();
     }
 
@@ -567,323 +586,284 @@
       const id = 'bot-' + Math.random().toString(36).slice(2);
       const html = `
         <div class="msg bot" id="${id}">
-          <div class="avatar bot">RAGMind</div>
-          <div style="min-width: 180px;">
+          <div class="avatar">R</div>
+          <div class="col">
             <div class="bubble">
               <span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
-              <details class="progress" open>
-                <summary>Stage Progress (waiting)</summary>
-                <ul></ul>
-              </details>
+              <div class="stages" id="${id}-stages"></div>
             </div>
-            <div class="meta">${nowTime()}</div>
+            <div class="meta" id="${id}-meta">${nowTime()} · working…</div>
           </div>
-        </div>
-      `;
+        </div>`;
       chatEl.insertAdjacentHTML('beforeend', html);
       scrollToBottom();
       return document.getElementById(id);
     }
 
-    function renderProgress(botMsgEl, doneList, runningList, status){
-      const details = botMsgEl.querySelector('details.progress');
-      const summary = details.querySelector('summary');
-      const ul = details.querySelector('ul');
+    function renderStages(botMsgEl, doneList, runningList, status){
+      const wrap = botMsgEl.querySelector('.stages');
       const done = Array.isArray(doneList) ? doneList : [];
       const running = Array.isArray(runningList) ? runningList : [];
-      const totalDone = done.length;
-      const totalRun = running.length;
-
-      const statusMap = {
-        'processing': 'Processing',
-        'completed': 'Completed',
-        'failed': 'Failed',
-        'pending': 'Waiting',
-      };
-      const displayStatus = statusMap[status] || status || 'unknown';
-
-      summary.textContent = `Stage Progress (done ${totalDone}, running ${totalRun}, status: ${displayStatus})`;
-
-      const lines = [
-        ...done.map(x => `✅ ${x}`),
-        ...running.map(x => `⏳ ${x}`)
-      ];
-      ul.innerHTML = '';
-      if(lines.length === 0){
-        ul.insertAdjacentHTML('beforeend', '<li>No progress yet</li>');
-      }else{
-        for(const line of lines){
-          ul.insertAdjacentHTML('beforeend', `<li>${escapeHtml(line)}</li>`);
-        }
+      wrap.innerHTML = '';
+      for (const d of done) {
+        wrap.insertAdjacentHTML('beforeend', `<span class="stage done">✓ ${escapeHtml(d)}</span>`);
+      }
+      for (const r of running) {
+        wrap.insertAdjacentHTML('beforeend', `<span class="stage active"><span class="spinner"></span>${escapeHtml(r)}</span>`);
+      }
+      if (status === 'failed' && done.length === 0 && running.length === 0) {
+        wrap.insertAdjacentHTML('beforeend', `<span class="stage err">✕ Step failed</span>`);
+      }
+      if (status === 'pending') {
+        wrap.insertAdjacentHTML('beforeend', `<span class="stage active"><span class="spinner"></span>Waiting for backend…</span>`);
       }
     }
 
     function finalizeBotAnswer(botMsgEl, answer, error, imageUrls){
       const bubble = botMsgEl.querySelector('.bubble');
-      const progress = botMsgEl.querySelector('details.progress');
+      const meta = botMsgEl.querySelector('.meta');
+      bubble.querySelector('.typing')?.remove();
+      meta.textContent = formatTime(Date.now() / 1000);
+
       const err = (error || '').trim();
-
-      if(err){
-        const progressEl = progress ? progress : null;
-        if(progressEl) {
-            progressEl.remove();
-            progressEl.removeAttribute('open');
+      if (err) {
+        let answerEl = bubble.querySelector('.answer');
+        if (!answerEl) {
+          answerEl = document.createElement('div');
+          answerEl.className = 'answer';
+          bubble.appendChild(answerEl);
         }
-        bubble.textContent = '';
-        const errEl = document.createElement('div');
-        errEl.className = 'answer';
-        errEl.textContent = `Sorry, this request failed:\n${err}`;
-        bubble.appendChild(errEl);
-        if(progressEl) bubble.appendChild(progressEl);
-        return;
+        answerEl.style.color = 'var(--err)';
+        answerEl.textContent = 'Sorry, this request failed:\n' + err;
+      } else if (answer !== undefined && answer !== null && String(answer).trim().length > 0) {
+        let answerEl = bubble.querySelector('.answer');
+        if (!answerEl) {
+          answerEl = document.createElement('div');
+          answerEl.className = 'answer';
+          bubble.appendChild(answerEl);
+        }
+        renderAnswerWithImages(answerEl, answer, imageUrls || []);
       }
+      // If neither branch ran, the answer was already rendered by SSE deltas/final — leave it.
 
-      const progressEl = progress ? progress : null;
-      if(progressEl) {
-        progressEl.remove();
-        progressEl.removeAttribute('open'); // collapse after completion
+      if (!botMsgEl.querySelector('.actions')) {
+        const row = document.createElement('div');
+        row.className = 'actions';
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'mini-btn';
+        copyBtn.textContent = 'Copy';
+        copyBtn.addEventListener('click', async () => {
+          const text = botMsgEl.querySelector('.answer-text')?.textContent || '';
+          try {
+            await navigator.clipboard.writeText(text);
+            toast('Answer copied');
+          } catch(e) { toast('Copy failed'); }
+        });
+        row.appendChild(copyBtn);
+        const col = botMsgEl.querySelector('.col');
+        col.appendChild(row);
       }
-      bubble.textContent = '';
-      const answerEl = document.createElement('div');
-      answerEl.className = 'answer';
-      bubble.appendChild(answerEl);
-      renderAnswerWithImages(answerEl, answer || '', imageUrls || []);
-      if(progressEl) bubble.appendChild(progressEl);
+      scrollToBottom();
     }
 
-    async function apiHealth(){
-      try{
+    function toast(msg){
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+    }
+
+    // ---------- backend ----------
+    async function checkHealth(){
+      try {
         const res = await fetch(`${API_BASE}/health`);
-        if(!res.ok) throw new Error('health not ok');
-        apiPill.textContent = `API: Connected`;
-      }catch(e){
-        apiPill.textContent = `API: Not connected`;
+        if (!res.ok) throw new Error('bad');
+        statusDot.className = 'status-dot on';
+        statusText.textContent = 'Connected';
+      } catch(e){
+        statusDot.className = 'status-dot off';
+        statusText.textContent = 'Offline';
       }
     }
 
     async function loadHistory(){
-      try{
-        const res = await fetch(`${API_BASE}/history/${sessionId}`);
-        if(!res.ok) return;
+      try {
+        const res = await fetch(`${API_BASE}/history/${currentSession()}`);
+        if (!res.ok) return;
         const data = await res.json();
         const items = Array.isArray(data.items) ? data.items : [];
-        if(items.length === 0) return;
-        // Keep the first welcome message, clear the rest then render history.
-        const nodes = Array.from(chatEl.querySelectorAll('.msg'));
-        for(let i=1;i<nodes.length;i++) nodes[i].remove();
-        for(const item of items){
-          if(item.role === 'user'){
-            addUserMsgWithTime(item.text || '', item.ts);
-          }else{
-            addBotMsgWithTime(item.text || '', item.ts, item.image_urls || []);
-          }
+        if (items.length === 0) { renderWelcome(); return; }
+        resetChatView();
+        for (const item of items) {
+          if (item.role === 'user') addUserMsg(item.text || '', item.ts);
+          else addBotMsgFromHistory(item);
         }
         scrollToBottom();
-      }catch(_){}
+      } catch(e){ renderWelcome(); }
+    }
+
+    function addBotMsgFromHistory(item){
+      const id = 'bot-his-' + Math.random().toString(36).slice(2);
+      const html = `
+        <div class="msg bot" id="${id}">
+          <div class="avatar">R</div>
+          <div class="col">
+            <div class="bubble"><div class="answer"></div></div>
+            <div class="meta">${formatTime(item.ts)}</div>
+          </div>
+        </div>`;
+      chatEl.insertAdjacentHTML('beforeend', html);
+      const el = document.getElementById(id);
+      if (el) renderAnswerWithImages(el.querySelector('.answer'), item.text || '', item.image_urls || []);
     }
 
     async function submitQuery(text){
-      const isStream = streamToggle.checked;
       const res = await fetch(`${API_BASE}/query`, {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          query: text,
-          session_id: sessionId,
-          is_stream: isStream
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: text, session_id: currentSession(), is_stream: streamToggle.checked })
       });
-      if(!res.ok){
+      if (!res.ok) {
         const msg = await res.text();
         throw new Error(msg || 'Request failed');
       }
       return await res.json();
     }
 
-    async function poll(taskId, botMsgEl){
-      const typing = botMsgEl.querySelector('.typing');
-      const interval = setInterval(async () => {
-        try{
-          const res = await fetch(`${API_BASE}/status/${taskId}`);
-          const data = await res.json();
-          renderProgress(botMsgEl, data.done_list, data.running_list, data.status);
-
-          if(data.status === 'completed'){
-            if(typing) typing.remove();
-            finalizeBotAnswer(botMsgEl, data.answer, data.error, data.image_urls || []);
-            clearInterval(interval);
-            sendBtn.disabled = false;
-          }else if(data.status === 'failed'){
-            if(typing) typing.remove();
-            finalizeBotAnswer(botMsgEl, data.answer, data.error || 'failed', data.image_urls || []);
-            clearInterval(interval);
-            sendBtn.disabled = false;
-          }
-        }catch(e){
-          // Don't stop on polling errors; let the user retry later.
-        }
-      }, 1200);
-    }
-
     async function onSend(){
-      console.log('[perf] A onSend start', performance.now());
       const text = (inputEl.value || '').trim();
-      if(!text) return;
+      if (!text) return;
       inputEl.value = '';
+      autoResize();
+      touchSession(currentSession(), text.slice(0, 40));
+      renderSessions();
       addUserMsg(text);
       const botMsgEl = addBotMsgSkeleton();
       sendBtn.disabled = true;
 
-      try{
-        const isStream = streamToggle.checked;
-        console.log('[perf] B submitQuery start', performance.now(), { isStream });
+      try {
         const data = await submitQuery(text);
-        console.log('[perf] B submitQuery end', performance.now(), data);
-        
-        // Render initial state
-        renderProgress(botMsgEl, [], [], 'pending');
+        renderStages(botMsgEl, [], [], 'pending');
 
-        if (!isStream) {
-          // Non-streaming: result comes back directly.
-          // data: { session_id, answer, done_list, error, message }
-          renderProgress(botMsgEl, data.done_list || [], [], 'completed');
+        if (!streamToggle.checked) {
+          renderStages(botMsgEl, data.done_list || [], [], 'completed');
           finalizeBotAnswer(botMsgEl, data.answer, data.error, data.image_urls || []);
           sendBtn.disabled = false;
           return;
         }
 
-        // Streaming: SSE
-        const { session_id } = data; // backend returns session_id here
-        
+        const { session_id } = data;
         const bubble = botMsgEl.querySelector('.bubble');
         let answerEl = bubble.querySelector('.answer');
-        if(!answerEl){
+        if (!answerEl) {
           answerEl = document.createElement('div');
           answerEl.className = 'answer';
-          bubble.insertBefore(answerEl, bubble.firstChild);
+          const stages = bubble.querySelector('.stages');
+          if (stages) bubble.insertBefore(answerEl, stages);
+          else bubble.appendChild(answerEl);
         }
+        let rawAnswerText = '';
+        let skipLeadingWhitespace = true;
 
         const es = new EventSource(`${API_BASE}/stream/${session_id}`);
-        console.log('[perf] C EventSource created', performance.now(), { session_id });
-        let rawAnswerText = '';
+        let finished = false;
+        const finish = () => { if (!finished) { finished = true; es.close(); sendBtn.disabled = false; } };
 
         es.addEventListener('progress', (e) => {
-          try{
+          try {
             const d = JSON.parse(e.data || '{}');
-            renderProgress(botMsgEl, d.done_list, d.running_list, d.status);
-            // When progress reaches completed, end the "..." waiting state early.
-            if(d && d.status === 'completed'){
+            renderStages(botMsgEl, d.done_list, d.running_list, d.status);
+            if (d.status === 'completed') {
               const typing = botMsgEl.querySelector('.typing');
-              if(typing) typing.remove();
-              // Guard: if backend never sends final, keep the button usable.
-              sendBtn.disabled = false;
+              if (typing) typing.remove();
             }
-          }catch(_){}
+          } catch(_){}
         });
 
         es.addEventListener('delta', (e) => {
-          try{
+          try {
             const d = JSON.parse(e.data || '{}');
             const delta = d.delta || '';
-            if(delta){
-              rawAnswerText += delta;
-              // Even without a final event, render images during streaming.
-              renderAnswerWithImages(answerEl, rawAnswerText, []);
+            if (delta) {
+              if (skipLeadingWhitespace) {
+                const trimmed = delta.trimStart();
+                if (trimmed.length > 0) {
+                  rawAnswerText += trimmed;
+                  skipLeadingWhitespace = false;
+                }
+              } else {
+                rawAnswerText += delta;
+              }
+              if (!skipLeadingWhitespace) renderAnswerWithImages(answerEl, rawAnswerText, []);
               scrollToBottom();
             }
-          }catch(_){}
+          } catch(_){}
         });
 
-        es.addEventListener('final', (e) => {
-          const typing = botMsgEl.querySelector('.typing');
-          if(typing) typing.remove();
-          // Collapse progress
-          const progress = botMsgEl.querySelector('details.progress');
-          if(progress) progress.removeAttribute('open');
-          
-          try{
+        const handleFinal = (e) => {
+          try {
             const d = JSON.parse(e.data || '{}');
-            // Streaming deltas may lack 【图片】/image lists; the final d.answer is complete — prefer it.
-            const finalText = (d && typeof d.answer === 'string' && d.answer.trim().length > 0) ? d.answer : (rawAnswerText || answerEl.textContent || '');
+            const finalText = (d && typeof d.answer === 'string' && d.answer.trim().length > 0)
+              ? d.answer : (rawAnswerText || answerEl.textContent || '');
             renderAnswerWithImages(answerEl, finalText, d.image_urls || []);
-          }catch(_){}
-          es.close();
-          sendBtn.disabled = false;
-        });
-
-        es.addEventListener('final_answer', (e) => {
-           // Respond to the user's final_answer signal to ensure images render.
-          const typing = botMsgEl.querySelector('.typing');
-          if(typing) typing.remove();
-          const progress = botMsgEl.querySelector('details.progress');
-          if(progress) progress.removeAttribute('open');
-          
-          try{
-            const d = JSON.parse(e.data || '{}');
-            const finalText = (d && typeof d.answer === 'string' && d.answer.trim().length > 0) ? d.answer : (rawAnswerText || answerEl.textContent || '');
-            renderAnswerWithImages(answerEl, finalText, d.image_urls || []);
-          }catch(_){}
-          es.close();
-          sendBtn.disabled = false;
-        });
+            const stages = botMsgEl.querySelector('.stages');
+            if (stages && d.done_list) renderStages(botMsgEl, d.done_list, [], 'completed');
+          } catch(_){}
+          finalizeBotAnswer(botMsgEl);
+          finish();
+        };
+        es.addEventListener('final', handleFinal);
+        es.addEventListener('final_answer', handleFinal);
 
         es.addEventListener('error', (e) => {
-          const typing = botMsgEl.querySelector('.typing');
-          if(typing) typing.remove();
-          // Collapse progress
-          const progress = botMsgEl.querySelector('details.progress');
-          if(progress) progress.removeAttribute('open');
-
-          try{
-            const msg = e && e.data ? (JSON.parse(e.data).error || 'SSE connection interrupted/failed') : 'SSE connection interrupted/failed';
+          try {
+            const msg = e && e.data ? (JSON.parse(e.data).error || 'connection interrupted') : 'connection interrupted';
             rawAnswerText += `\n\n(Error: ${msg})`;
             renderAnswerWithImages(answerEl, rawAnswerText, []);
-          }catch(_){
-            rawAnswerText += `\n\n(Error: SSE connection interrupted/failed)`;
+          } catch(_){
+            rawAnswerText += '\n\n(Error: connection interrupted)';
             renderAnswerWithImages(answerEl, rawAnswerText, []);
           }
-          es.close();
-          sendBtn.disabled = false;
+          finalizeBotAnswer(botMsgEl);
+          finish();
         });
-      }catch(e){
+      } catch(e){
         const bubble = botMsgEl.querySelector('.bubble');
-        const progress = botMsgEl.querySelector('details.progress');
-        const typing = botMsgEl.querySelector('.typing');
-        if(typing) typing.remove();
-        bubble.innerHTML = `Request failed: ${escapeHtml(e.message || e)}\n\n` + progress.outerHTML;
+        bubble.querySelector('.typing')?.remove();
+        finalizeBotAnswer(botMsgEl, '', e.message || String(e));
         sendBtn.disabled = false;
       }
     }
 
+    // ---------- composer ----------
+    function autoResize(){
+      inputEl.style.height = 'auto';
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 150) + 'px';
+    }
+    inputEl.addEventListener('input', autoResize);
+
     sendBtn.addEventListener('click', onSend);
     inputEl.addEventListener('keydown', (e) => {
-      if(e.key === 'Enter' && !e.shiftKey){
+      if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         onSend();
       }
     });
+
     btnClear.addEventListener('click', async () => {
-      if(!confirm("Are you sure you want to clear this conversation's history? This cannot be undone.")) return;
-
+      if (!confirm('Clear this conversation? This cannot be undone.')) return;
       try {
-        const res = await fetch(`${API_BASE}/history/${sessionId}`, { method: 'DELETE' });
-        if(!res.ok) {
-           console.error("Failed to clear history backend, status:", res.status);
-           alert('Failed to clear on server; cleared locally only');
-        }
-      } catch(e) {
-        console.error("Failed to clear history backend", e);
-        alert('Failed to clear on server; cleared locally only');
-      }
-
-      // Clear everything except the first welcome message.
-      const nodes = Array.from(chatEl.querySelectorAll('.msg'));
-      for(let i=1;i<nodes.length;i++) nodes[i].remove();
-      scrollToBottom();
+        await fetch(`${API_BASE}/history/${currentSession()}`, { method: 'DELETE' });
+      } catch(e){ console.error(e); }
+      resetChatView();
+      renderWelcome();
     });
 
-    apiHealth();
-    setInterval(apiHealth, 5000);
+    btnNew.addEventListener('click', startNewChat);
+
+    // ---------- init ----------
+    checkHealth();
+    renderSessions();
     loadHistory();
     setTimeout(() => inputEl.focus(), 200);
   </script>

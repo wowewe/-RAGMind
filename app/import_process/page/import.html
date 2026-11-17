@@ -3,276 +3,431 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>File Import Service</title>
+    <title>RAGMind · Document Import</title>
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f5f7fa;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
+        :root{
+            --bg:#f3f5f7;
+            --panel:#ffffff;
+            --text:#1f2d3d;
+            --muted:#7a869a;
+            --brand:#1aa7ff;
+            --brand2:#5b7cfa;
+            --success:#2ecc71;
+            --warning:#f39c12;
+            --danger:#e74c3c;
+            --border:#e6e9ef;
+            --shadow:0 10px 30px rgba(31,45,61,.12);
         }
-        .container {
-            width: 100%;
-            max-width: 800px;
-            background-color: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        *{box-sizing:border-box}
+        body{
+            margin:0;
+            font-family:"Segoe UI","Microsoft YaHei",system-ui,-apple-system,Arial,sans-serif;
+            background: radial-gradient(1200px 600px at 20% 0%, rgba(26,167,255,.14), transparent 60%),
+                        radial-gradient(1000px 500px at 90% 10%, rgba(91,124,250,.14), transparent 55%),
+                        var(--bg);
+            color:var(--text);
+            min-height:100vh;
+            display:flex;
+            justify-content:center;
+            padding:28px 18px;
         }
-        h1 {
-            color: #2c3e50;
-            text-align: center;
-            margin-bottom: 30px;
+        .app{
+            width:100%;
+            max-width:860px;
+            background:var(--panel);
+            border:1px solid var(--border);
+            border-radius:18px;
+            box-shadow:var(--shadow);
+            overflow:hidden;
+            align-self:flex-start;
         }
-        .upload-area {
-            border: 2px dashed #3498db;
-            border-radius: 8px;
-            padding: 40px;
-            text-align: center;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            margin-bottom: 20px;
+        /* ---------- Top bar ---------- */
+        .topbar{
+            display:flex;
+            align-items:center;
+            gap:14px;
+            padding:16px 22px;
+            border-bottom:1px solid var(--border);
+            background:linear-gradient(90deg, rgba(26,167,255,.08), rgba(91,124,250,.08));
         }
-        .upload-area:hover {
-            background-color: #ecf6fd;
+        .brand{display:flex;align-items:center;gap:12px;min-width:0}
+        .logo{
+            width:38px;height:38px;border-radius:11px;
+            background:linear-gradient(135deg, var(--brand), var(--brand2));
+            display:flex;align-items:center;justify-content:center;
+            color:#fff;font-weight:700;font-size:18px;
+            box-shadow:0 8px 18px rgba(26,167,255,.28);
+            flex:0 0 auto;
         }
-        .upload-icon {
-            font-size: 48px;
-            color: #3498db;
-            margin-bottom: 10px;
+        .title{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+        .title strong{font-size:15px;letter-spacing:.2px;white-space:nowrap}
+        .title span{font-size:12px;color:var(--muted);margin-top:3px;white-space:nowrap}
+        /* stats */
+        .stats{margin-left:auto;display:flex;gap:8px;align-items:center}
+        .stat{
+            display:flex;align-items:baseline;gap:6px;
+            background:#fff;border:1px solid var(--border);
+            padding:6px 14px;border-radius:999px;
+            white-space:nowrap;
         }
-        .file-input {
-            display: none;
+        .stat b{font-size:15px;font-weight:700;color:var(--text)}
+        .stat span{font-size:12px;color:var(--muted)}
+        .stat.ok b{color:#0e9f6e}
+        .stat.err b{color:var(--danger)}
+        /* ---------- Upload zone ---------- */
+        .zone-wrap{padding:24px 22px 8px}
+        .upload-area{
+            border:2px dashed rgba(26,167,255,.45);
+            border-radius:14px;
+            padding:38px 20px;
+            text-align:center;
+            cursor:pointer;
+            background:linear-gradient(180deg, rgba(26,167,255,.05), rgba(91,124,250,.04));
+            transition:border-color .2s, background-color .2s, transform .15s;
         }
-        .btn {
-            background-color: #3498db;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background-color 0.3s;
+        .upload-area:hover{border-color:var(--brand);background:linear-gradient(180deg, rgba(26,167,255,.09), rgba(91,124,250,.07))}
+        .upload-area.dragover{border-color:var(--brand);background:rgba(26,167,255,.1);transform:scale(1.005)}
+        .upload-icon{
+            width:56px;height:56px;margin:0 auto 14px;border-radius:16px;
+            background:linear-gradient(135deg, rgba(26,167,255,.16), rgba(91,124,250,.16));
+            display:flex;align-items:center;justify-content:center;
         }
-        .btn:hover {
-            background-color: #2980b9;
+        .upload-icon svg{width:28px;height:28px;stroke:var(--brand)}
+        .upload-area h2{margin:0 0 6px;font-size:16px;font-weight:600}
+        .upload-area p{margin:0;font-size:13px;color:var(--muted)}
+        .upload-area .format{margin-top:10px;font-size:12px;color:var(--muted);opacity:.85}
+        .file-input{display:none}
+        /* ---------- File list ---------- */
+        .file-list{padding:14px 22px 26px}
+        .file-list-title{
+            margin:10px 0 12px;font-size:13px;color:var(--muted);
+            font-weight:600;letter-spacing:.3px;text-transform:uppercase;
         }
-        .btn:disabled {
-            background-color: #bdc3c7;
-            cursor: not-allowed;
+        .empty{
+            display:flex;flex-direction:column;align-items:center;gap:8px;
+            padding:34px 20px;color:var(--muted);
         }
-        .file-list {
-            margin-top: 30px;
+        .empty svg{width:44px;height:44px;stroke:var(--border);stroke-width:1.5;fill:none}
+        .empty span{font-size:13px}
+        .file-item{
+            display:flex;align-items:flex-start;gap:14px;
+            border:1px solid var(--border);
+            border-radius:14px;
+            padding:14px 16px;
+            margin-bottom:12px;
+            background:#fff;
+            transition:box-shadow .2s, border-color .2s, opacity .2s;
+            animation:itemIn .25s ease;
         }
-        .file-item {
-            background-color: #fff;
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
-            padding: 15px;
-            margin-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        @keyframes itemIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+        .file-item:hover{box-shadow:0 6px 18px rgba(31,45,61,.08)}
+        .file-item.failed{border-color:rgba(231,76,60,.4)}
+        .file-icon{
+            width:40px;height:40px;border-radius:10px;flex:0 0 auto;
+            display:flex;align-items:center;justify-content:center;
+            font-size:11px;font-weight:700;letter-spacing:.5px;
         }
-        .file-info {
-            display: flex;
-            flex-direction: column;
-            flex: 1;
-            margin-right: 20px;
+        .file-icon.pdf{background:rgba(231,76,60,.12);color:#d64541}
+        .file-icon.md{background:rgba(26,167,255,.12);color:var(--brand)}
+        .file-body{flex:1;min-width:0}
+        .file-row{display:flex;align-items:center;gap:10px}
+        .file-name{font-weight:600;font-size:14px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .file-size{font-size:12px;color:var(--muted);flex:0 0 auto}
+        .progress-bar-container{
+            width:100%;height:5px;background:#eef1f5;
+            margin-top:10px;border-radius:3px;overflow:hidden;display:none;
         }
-        .file-name {
-            font-weight: 600;
-            color: #333;
+        .progress-bar{
+            height:100%;width:0%;border-radius:3px;
+            background:linear-gradient(90deg, var(--brand), var(--brand2));
+            transition:width .3s ease, background-color .3s;
         }
-        .file-size {
-            font-size: 12px;
-            color: #7f8c8d;
-            margin-top: 4px;
+        .progress-bar.complete{background:var(--success)}
+        .progress-bar.error{background:var(--danger)}
+        .run-step{
+            display:none;margin-top:8px;
+            font-size:12px;color:var(--brand);
         }
-        .status-badge {
-            padding: 5px 10px;
-            border-radius: 15px;
-            font-size: 12px;
-            font-weight: bold;
-            color: white;
-            min-width: 80px;
-            text-align: center;
+        .run-step.show{display:flex;align-items:center;gap:6px}
+        .run-step .dot{
+            width:7px;height:7px;border-radius:50%;
+            background:var(--brand);
+            animation:blink 1s infinite;
         }
-        .status-uploading { background-color: #f39c12; }
-        .status-processing { background-color: #3498db; }
-        .status-completed { background-color: #2ecc71; }
-        .status-error { background-color: #e74c3c; }
-        
-        /* simple progress bar */
-        .progress-bar-container {
-            width: 100%;
-            height: 4px;
-            background-color: #f0f0f0;
-            margin-top: 8px;
-            border-radius: 2px;
-            overflow: hidden;
-            display: none;
+        @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+        .log-details{margin-top:10px;font-size:12px;color:var(--muted)}
+        .log-details summary{cursor:pointer;user-select:none;color:var(--muted);font-size:12px;outline:none}
+        .log-details summary:hover{color:var(--text)}
+        .log-list{margin:8px 0 0 18px;padding:0}
+        .log-list li{margin:4px 0;line-height:1.4;font-size:12px;color:#56657a}
+        /* ---------- Right meta column ---------- */
+        .file-meta{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex:0 0 auto}
+        .status-badge{
+            padding:5px 12px;border-radius:999px;
+            font-size:12px;font-weight:600;text-align:center;
         }
-        .progress-bar {
-            height: 100%;
-            background-color: #f39c12;
-            width: 0%;
-            transition: width 0.3s, background-color 0.3s;
+        .status-uploading{background:rgba(243,156,18,.12);color:#c47d0f}
+        .status-processing{background:rgba(26,167,255,.12);color:var(--brand)}
+        .status-completed{background:rgba(46,204,113,.12);color:#0e9f6e}
+        .status-error{background:rgba(231,76,60,.1);color:var(--danger)}
+        .elapsed{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+        .file-remove{
+            border:1px solid var(--border);background:#fff;color:var(--muted);
+            width:26px;height:26px;border-radius:8px;cursor:pointer;
+            font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;
+            transition:color .15s, border-color .15s, background .15s;
         }
-
-        /* task log (expandable/collapsible) */
-        .log-details {
-            margin-top: 8px;
-            font-size: 12px;
-            color: #7f8c8d;
+        .file-remove:hover{color:var(--danger);border-color:rgba(231,76,60,.4);background:rgba(231,76,60,.05)}
+        /* ---------- Footer hint ---------- */
+        .foot{
+            padding:14px 22px;
+            border-top:1px solid var(--border);
+            background:#fafbfc;
+            font-size:12px;color:var(--muted);
+            display:flex;align-items:center;gap:8px;
         }
-        .log-details summary {
-            cursor: pointer;
-            user-select: none;
-            color: #6c7a89;
-        }
-        .log-list {
-            margin: 6px 0 0 16px;
-            padding: 0;
-        }
-        .log-list li {
-            margin: 2px 0;
-            line-height: 1.4;
-        }
+        .foot svg{width:15px;height:15px;stroke:var(--muted);flex:0 0 auto}
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>📄 Knowledge Base File Import</h1>
-    
-    <div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
-        <div class="upload-icon">☁️</div>
-        <p>Click or drag &amp; drop files here (PDF/MD)</p>
-        <input type="file" id="fileInput" class="file-input" multiple accept=".pdf,.md">
+<div class="app">
+    <div class="topbar">
+        <div class="brand">
+            <div class="logo">R</div>
+            <div class="title">
+                <strong>RAGMind</strong>
+                <span>Document Import</span>
+            </div>
+        </div>
+        <div class="stats">
+            <div class="stat"><b id="statTotal">0</b><span>Total</span></div>
+            <div class="stat ok"><b id="statDone">0</b><span>Completed</span></div>
+            <div class="stat err"><b id="statFail">0</b><span>Failed</span></div>
+        </div>
     </div>
 
-    <div id="fileList" class="file-list">
-        <!-- The file list will be generated here -->
+    <div class="zone-wrap">
+        <div class="upload-area" id="dropZone">
+            <div class="upload-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 16V4"/><path d="M6 10l6-6 6 6"/>
+                    <path d="M4 20h16"/>
+                </svg>
+            </div>
+            <h2>Upload documents to your knowledge base</h2>
+            <p>Click or drag &amp; drop files here</p>
+            <div class="format">Supported: PDF / Markdown (.pdf, .md) · Multiple files allowed</div>
+            <input type="file" id="fileInput" class="file-input" multiple accept=".pdf,.md">
+        </div>
+    </div>
+
+    <div class="file-list">
+        <div class="empty" id="emptyState">
+            <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3-3 3 3"/>
+            </svg>
+            <span>No files imported yet — progress will show here after uploading</span>
+        </div>
+        <div class="file-list-title" id="listTitle" hidden>Recent uploads</div>
+        <div id="fileList"></div>
+    </div>
+
+    <div class="foot">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+        </svg>
+        <span>Files are parsed, vectorized and ready for questions in the chat page.</span>
     </div>
 </div>
 
 <script>
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
-    const fileList = document.getElementById('fileList');
-    
-    // Simulated backend API address
+    const fileListEl = document.getElementById('fileList');
+    const listTitle = document.getElementById('listTitle');
+    const emptyState = document.getElementById('emptyState');
+
+    // Backend API base URL
     const API_BASE = 'http://127.0.0.1:8000';
+
+    function refreshStats() {
+        const items = [...fileListEl.querySelectorAll('.file-item')];
+        const done = items.filter(el => el.dataset.status === 'completed').length;
+        const fail = items.filter(el => el.dataset.status === 'failed').length;
+        document.getElementById('statTotal').textContent = items.length;
+        document.getElementById('statDone').textContent = done;
+        document.getElementById('statFail').textContent = fail;
+        emptyState.style.display = items.length ? 'none' : 'flex';
+        listTitle.hidden = items.length === 0;
+    }
+
+    function startElapsed(itemEl) {
+        itemEl._startTs = Date.now();
+        const el = itemEl.querySelector('.elapsed');
+        const timer = setInterval(() => {
+            const s = Math.floor((Date.now() - itemEl._startTs) / 1000);
+            el.textContent = s + 's';
+        }, 1000);
+        itemEl._elapsedTimer = timer;
+    }
+
+    function stopElapsed(itemEl, showDuration) {
+        if (itemEl._elapsedTimer) clearInterval(itemEl._elapsedTimer);
+        itemEl._elapsedTimer = null;
+        if (showDuration && itemEl._startTs) {
+            const secs = Math.max(1, Math.round((Date.now() - itemEl._startTs) / 1000));
+            itemEl.querySelector('.elapsed').textContent = 'finished in ' + secs + 's';
+        }
+    }
+
+    function itemCleanup(itemEl) {
+        if (itemEl._pollInterval) clearInterval(itemEl._pollInterval);
+        if (itemEl._elapsedTimer) clearInterval(itemEl._elapsedTimer);
+        if (itemEl._xhr) itemEl._xhr.abort();
+    }
+
+    function removeItem(itemEl) {
+        itemCleanup(itemEl);
+        itemEl.remove();
+        refreshStats();
+    }
 
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
-        dropZone.style.backgroundColor = '#ecf6fd';
+        dropZone.classList.add('dragover');
     });
-
     dropZone.addEventListener('dragleave', (e) => {
         e.preventDefault();
-        dropZone.style.backgroundColor = '';
+        dropZone.classList.remove('dragover');
     });
-
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
-        dropZone.style.backgroundColor = '';
+        dropZone.classList.remove('dragover');
         handleFiles(e.dataTransfer.files);
     });
-
     fileInput.addEventListener('change', (e) => {
         handleFiles(e.target.files);
+        fileInput.value = '';
     });
 
     function handleFiles(files) {
         Array.from(files).forEach(uploadFile);
     }
 
-    function updateProgressBar(bar, percentage) {
-        bar.style.width = percentage + '%';
-        if (percentage >= 100) {
-            bar.style.backgroundColor = '#3498db'; // blue
-        } else {
-            bar.style.backgroundColor = '#f39c12'; // orange
-        }
+    function fileIconHtml(file) {
+        const isPdf = /\.pdf$/i.test(file.name);
+        return `<div class="file-icon ${isPdf ? 'pdf' : 'md'}">${isPdf ? 'PDF' : 'MD'}</div>`;
     }
 
-    async function uploadFile(file) {
-        // Create file item UI
+    function uploadFile(file) {
         const id = 'file-' + Math.random().toString(36).substr(2, 9);
         const html = `
-            <div class="file-item" id="${id}">
-                <div class="file-info">
-                    <span class="file-name">${file.name}</span>
-                    <span class="file-size">${(file.size / 1024).toFixed(2)} KB</span>
+            <div class="file-item" id="${id}" data-status="uploading">
+                ${fileIconHtml(file)}
+                <div class="file-body">
+                    <div class="file-row">
+                        <span class="file-name">${file.name.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
+                        <span class="file-size">${(file.size / 1024).toFixed(1)} KB</span>
+                    </div>
                     <div class="progress-bar-container">
                         <div class="progress-bar"></div>
                     </div>
+                    <div class="run-step"><span class="dot"></span><span class="run-step-text"></span></div>
                     <details class="log-details">
                         <summary>Logs (click to expand)</summary>
                         <ul class="log-list"></ul>
                     </details>
                 </div>
-                <div class="status-badge status-uploading">Uploading...</div>
+                <div class="file-meta">
+                    <div class="status-badge status-uploading">Uploading…</div>
+                    <div class="elapsed">0s</div>
+                    <button class="file-remove" title="Remove">✕</button>
+                </div>
             </div>
         `;
-        fileList.insertAdjacentHTML('afterbegin', html);
+        fileListEl.insertAdjacentHTML('afterbegin', html);
+        refreshStats();
+
         const itemEl = document.getElementById(id);
         const statusBadge = itemEl.querySelector('.status-badge');
         const progressBar = itemEl.querySelector('.progress-bar');
         const progressContainer = itemEl.querySelector('.progress-bar-container');
-        const logDetails = itemEl.querySelector('.log-details');
-        const logSummary = itemEl.querySelector('.log-details summary');
+        const runStep = itemEl.querySelector('.run-step');
+        const runStepText = itemEl.querySelector('.run-step-text');
         const logListEl = itemEl.querySelector('.log-list');
 
-        // Build FormData
+        itemEl.querySelector('.file-remove').addEventListener('click', () => removeItem(itemEl));
+        startElapsed(itemEl);
+
         const formData = new FormData();
         formData.append('files', file);
 
-        try {
-            // 1. Upload file
-            progressContainer.style.display = 'block';
-            // Simulated upload progress
-            updateProgressBar(progressBar, 50);
+        // Use XHR so we can track real upload progress (fetch has no upload events)
+        const xhr = new XMLHttpRequest();
+        itemEl._xhr = xhr;
+        progressContainer.style.display = 'block';
+        updateProgressBar(progressBar, 3);
 
-            const response = await fetch(`${API_BASE}/upload`, {
-                method: 'POST',
-                body: formData
-            });
+        xhr.open('POST', `${API_BASE}/upload`);
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const pct = Math.max(3, Math.round((e.loaded / e.total) * 100));
+                updateProgressBar(progressBar, pct);
+            }
+        };
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    const result = JSON.parse(xhr.responseText);
+                    const taskId = result.task_ids && result.task_ids[0];
+                    if (!taskId) throw new Error('No task id returned');
+                    updateProgressBar(progressBar, 30);
+                    statusBadge.textContent = 'Processing…';
+                    statusBadge.className = 'status-badge status-processing';
+                    itemEl.dataset.status = 'processing';
+                    pollStatus(taskId, itemEl);
+                } catch (err) {
+                    failItem(itemEl, progressBar, statusBadge, err.message);
+                }
+            } else {
+                failItem(itemEl, progressBar, statusBadge, 'Upload failed (HTTP ' + xhr.status + ')');
+            }
+        };
+        xhr.onerror = () => failItem(itemEl, progressBar, statusBadge, 'Network error during upload');
+        xhr.send(formData);
+    }
 
-            if (!response.ok) throw new Error('Upload failed');
-            
-            const result = await response.json();
-            const taskId = result.task_ids[0]; // assume one file per request, or take the first
+    function failItem(itemEl, progressBar, statusBadge, msg) {
+        itemEl.classList.add('failed');
+        statusBadge.textContent = 'Failed';
+        statusBadge.className = 'status-badge status-error';
+        itemEl.dataset.status = 'failed';
+        updateProgressBar(progressBar, 100, 'error');
+        itemEl.querySelector('.run-step').classList.remove('show');
+        stopElapsed(itemEl, false);
+        const summary = itemEl.querySelector('.log-details summary');
+        if (summary) summary.textContent = 'Logs (failed)';
+        const ul = itemEl.querySelector('.log-list');
+        if (ul) ul.insertAdjacentHTML('beforeend', `<li>❌ ${msg.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</li>`);
+        refreshStats();
+    }
 
-            // Upload finished, now processing — progress fixed at 30%
-            updateProgressBar(progressBar, 30);
-            statusBadge.textContent = 'Processing...';
-            statusBadge.className = 'status-badge status-processing';
-
-            // 2. Poll status
-            pollStatus(taskId, itemEl);
-
-        } catch (error) {
-            console.error(error);
-            statusBadge.textContent = 'Failed';
-            statusBadge.className = 'status-badge status-error';
-        }
+    function updateProgressBar(bar, percentage, state) {
+        bar.style.width = Math.min(100, Math.max(0, percentage)) + '%';
+        if (state === 'complete') bar.classList.add('complete');
+        else if (state === 'error') bar.classList.add('error');
     }
 
     function normalizeDoneLog(text) {
-        // backend may return Chinese node names, or already suffixed with "已完成"
         if (typeof text !== 'string') return String(text);
-        return text.endsWith('已完成') ? text : `${text} [done]`;
+        return text.endsWith('[done]') ? text : `${text} [done]`;
     }
 
     function normalizeRunningLog(text) {
-        // backend may return Chinese node names, or already prefixed with "正在进行"
         if (typeof text !== 'string') return String(text);
-        if (text.startsWith('Processing')) return text.endsWith('...') ? text : `${text}...`;
+        if (/^Processing\s/i.test(text)) return text.trim().endsWith('...') ? text : `${text}...`;
         return `Processing ${text}...`;
     }
 
@@ -280,20 +435,16 @@
         const logSummary = itemEl.querySelector('.log-details summary');
         const logListEl = itemEl.querySelector('.log-list');
         const logDetails = itemEl.querySelector('.log-details');
-
         const done = Array.isArray(doneList) ? doneList : [];
         const running = Array.isArray(runningList) ? runningList : [];
 
-        // Update summary (visible even when collapsed)
         logSummary.textContent = `Logs (done ${done.length}, running ${running.length} — click to expand)`;
 
-        // Clear and rebuild list
         logListEl.innerHTML = '';
         const lines = [
             ...done.map(normalizeDoneLog),
             ...running.map(normalizeRunningLog),
         ];
-
         if (lines.length === 0) {
             const li = document.createElement('li');
             li.textContent = 'No logs yet';
@@ -305,45 +456,56 @@
                 logListEl.appendChild(li);
             }
         }
-
-        // If there are no logs, collapse by default; otherwise keep the user's choice
-        if (lines.length === 0) {
-            logDetails.open = false;
-        }
+        if (lines.length === 0) logDetails.open = false;
     }
 
     function pollStatus(taskId, itemEl) {
         const statusBadge = itemEl.querySelector('.status-badge');
         const progressBar = itemEl.querySelector('.progress-bar');
-        
-        const interval = setInterval(async () => {
+        const runStep = itemEl.querySelector('.run-step');
+        const runStepText = itemEl.querySelector('.run-step-text');
+
+        itemEl._pollInterval = setInterval(async () => {
             try {
                 const res = await fetch(`${API_BASE}/status/${taskId}`);
+                if (!res.ok) throw new Error('status not ok');
                 const data = await res.json();
 
-                // Render logs (done/running)
                 renderLogs(itemEl, data.done_list, data.running_list);
-                
+
                 if (data.status === 'completed') {
-                    statusBadge.textContent = 'Completed';
+                    statusBadge.textContent = '✓ Completed';
                     statusBadge.className = 'status-badge status-completed';
-                    updateProgressBar(progressBar, 100);
-                    clearInterval(interval);
+                    itemEl.dataset.status = 'completed';
+                    updateProgressBar(progressBar, 100, 'complete');
+                    runStep.classList.remove('show');
+                    stopElapsed(itemEl, true);
+                    clearInterval(itemEl._pollInterval);
+                    refreshStats();
                 } else if (data.status === 'processing') {
-                    // Keep processing state
-                    statusBadge.textContent = 'Processing...';
-                    // Ensure progress is 30%
-                     updateProgressBar(progressBar, 30);
+                    statusBadge.textContent = 'Processing…';
+                    statusBadge.className = 'status-badge status-processing';
+                    itemEl.dataset.status = 'processing';
+                    const running = Array.isArray(data.running_list) ? data.running_list : [];
+                    if (running.length > 0) {
+                        runStepText.textContent = 'Current step: ' + running[0];
+                        runStep.classList.add('show');
+                    } else {
+                        runStep.classList.remove('show');
+                    }
+                    const done = Array.isArray(data.done_list) ? data.done_list.length : 0;
+                    updateProgressBar(progressBar, Math.min(90, 30 + done * 10));
                 } else if (data.status === 'failed') {
-                    statusBadge.textContent = 'Failed';
-                    statusBadge.className = 'status-badge status-error';
-                    clearInterval(interval);
+                    failItem(itemEl, progressBar, statusBadge, 'Import failed, see logs');
+                    clearInterval(itemEl._pollInterval);
                 }
             } catch (e) {
                 console.error('Polling error', e);
             }
-        }, 2000); // poll every 2 seconds
+        }, 2000);
     }
+
+    refreshStats();
 </script>
 
 </body>

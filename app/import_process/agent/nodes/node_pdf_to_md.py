@@ -18,6 +18,43 @@ from app.core.logger import logger  # 统一日志工具
 MINERU_BASE_URL = mineru_config.base_url
 MINERU_API_TOKEN = mineru_config.api_key
 
+# MinerU 错误重试参数
+_MAX_RETRIES = int(os.getenv("MINERU_MAX_RETRIES", "3"))
+_RETRY_BASE_DELAY = float(os.getenv("MINERU_RETRY_BASE_DELAY", "2.0"))
+
+# MinerU 文件上传加固参数（针对网络异常/慢链路上传）
+_UPLOAD_TIMEOUT = float(os.getenv("MINERU_UPLOAD_TIMEOUT", "300"))                        # 单次上传超时：60s 提升至 300s
+_UPLOAD_MAX_RETRIES = int(os.getenv("MINERU_UPLOAD_MAX_RETRIES", "3"))                  # 网络异常/可重试状态码最大重试次数
+_UPLOAD_RETRY_BASE_DELAY = float(os.getenv("MINERU_UPLOAD_RETRY_BASE_DELAY", "3.0"))   # 指数退避基准延迟（秒）
+
+
+def _is_mineru_rate_limited(resp_data: dict) -> bool:
+    """判断 MinerU 响应是否为限流/过载错误"""
+    if resp_data.get("code") == 0:
+        return False
+    msg = resp_data.get("msg") or resp_data.get("message") or ""
+    # 空 message + trace_id/traceId 是典型的限流响应（两种key格式均兼容）
+    has_trace_key = "trace_id" in resp_data or "traceId" in resp_data
+    if not msg.strip() and has_trace_key:
+        return True
+    # HTTP 429 或常见的限流关键字
+    if any(kw in msg.lower() for kw in ["limit", "rate", "too many", "overload"]):
+        return True
+    return False
+
+
+def _extract_mineru_error_msg(resp_data: dict) -> str:
+    """从 MinerU 错误响应中提取可读的错误消息"""
+    code = resp_data.get("code", "?")
+    msg = resp_data.get("msg") or resp_data.get("message") or ""
+    trace_id = resp_data.get("trace_id") or resp_data.get("traceId") or ""
+    if msg.strip():
+        return f"code={code}，{msg}"
+    parts = [f"code={code}"]
+    if trace_id:
+        parts.append(f"trace_id={trace_id}")
+    return ", ".join(parts)
+
 
 def step_1_validate_paths(state):
     """
@@ -54,6 +91,70 @@ def step_1_validate_paths(state):
     return pdf_path_obj, output_dir_obj
 
 
+def _upload_pdf_to_signed_url(upload_session, signed_url, pdf_path_obj):
+    """
+    流式上传PDF至MinerU预签名URL（含指数退避重试）。
+
+    加固点：
+    - 流式上传：以文件对象作为body并显式声明Content-Length，requests按16KB分块写出，
+      避免整包一次性sendall触发"write operation timed out"，同时兼容OSS对Content-Length的要求；
+    - 网络异常重试：ConnectionError/TimeoutError（含"写入超时"）按指数退避自动重试；
+    - HTTP可重试状态码：408/429/5xx同样退避重试，其余状态码视为确定性失败立即抛出；
+    - 重试时强制指定application/pdf，兼容MinerU文件类型校验。
+    """
+    file_size = os.path.getsize(pdf_path_obj)
+    last_exception = None
+
+    for attempt in range(1, _UPLOAD_MAX_RETRIES + 1):
+        try:
+            # 打开文件作为流式body，显式声明Content-Length（避免启用chunked传输）
+            with open(pdf_path_obj, "rb") as f:
+                upload_headers = {"Content-Length": str(file_size)}
+                if attempt > 1:
+                    upload_headers["Content-Type"] = "application/pdf"
+                put_resp = upload_session.put(
+                    url=signed_url,
+                    data=f,
+                    headers=upload_headers,
+                    timeout=_UPLOAD_TIMEOUT,
+                )
+
+            if put_resp.status_code == 200:
+                logger.info(f"[文件上传] 成功，文件{pdf_path_obj.name}已存入云存储")
+                return
+
+            logger.warning(
+                f"[文件上传] 第{attempt}次上传返回状态码：{put_resp.status_code}，"
+                f"响应内容：{put_resp.text[:300]}"
+            )
+            # 仅对可重试状态码继续退避重试；其余视为确定性失败立即抛出
+            if put_resp.status_code in (408, 429) or 500 <= put_resp.status_code < 600:
+                last_exception = RuntimeError(
+                    f"[文件上传] HTTP状态码：{put_resp.status_code}，响应内容：{put_resp.text[:300]}"
+                )
+            else:
+                raise RuntimeError(
+                    f"[文件上传] 上传失败，状态码：{put_resp.status_code}，"
+                    f"响应内容：{put_resp.text[:300]}"
+                )
+
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            last_exception = e
+            logger.warning(f"[文件上传] 第{attempt}次尝试网络异常：{e}")
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"[文件上传] 请求异常导致上传失败，错误信息：{e}") from e
+
+        if attempt < _UPLOAD_MAX_RETRIES:
+            delay = _UPLOAD_RETRY_BASE_DELAY * (2 ** (attempt - 1))
+            logger.info(f"[文件上传] 第{attempt}次失败，等待{delay:.1f}s后重试...")
+            time.sleep(delay)
+
+    raise RuntimeError(
+        f"[文件上传] 网络异常导致上传失败，已重试{_UPLOAD_MAX_RETRIES}次，"
+        f"错误信息：{last_exception}"
+    )
+
+
 def step_2_upload_and_poll(pdf_path_obj: Path, output_dir_obj: Path):
     """
     步骤2：上传PDF至MinerU并轮询解析任务状态
@@ -66,6 +167,7 @@ def step_2_upload_and_poll(pdf_path_obj: Path, output_dir_obj: Path):
     if not MINERU_BASE_URL or not MINERU_API_TOKEN:
         raise ValueError("MinerU配置缺失：请在.env中正确配置MINERU_BASE_URL和MINERU_API_TOKEN")
     logger.info(f"[配置校验] MinerU基础配置加载成功，开始处理文件：{pdf_path_obj.name}")
+    logger.info(f"[MinerU配置] base_url={MINERU_BASE_URL}, api_key={'设置'*6}...")
 
     # 构造请求头（符合HTTP规范，Bearer鉴权）
     request_headers = {
@@ -79,45 +181,76 @@ def step_2_upload_and_poll(pdf_path_obj: Path, output_dir_obj: Path):
         "files": [{"name": pdf_path_obj.name}],
         "model_version": "vlm"  # 官方推荐解析模型
     }
-    logger.debug(f"[获取上传链接] 调用接口：{url_get_upload}，请求参数：{req_data}")
+    logger.info(f"[获取上传链接] 调用接口：{url_get_upload}，请求参数：{req_data}")
     resp = requests.post(url=url_get_upload, headers=request_headers, json=req_data, timeout=30)
+    logger.info(f"[获取上传链接] HTTP状态码：{resp.status_code}，响应内容：{resp.text[:300]}")
 
     # 响应校验：先验HTTP状态，再验业务返回码
     if resp.status_code != 200:
-        raise RuntimeError(f"[获取上传链接] 网络请求失败，状态码：{resp.status_code}，响应内容：{resp.text}")
+        raise RuntimeError(
+            f"[获取上传链接] MinerU服务HTTP异常（状态码：{resp.status_code}），"
+            f"请检查网络或API Token是否有效。响应内容：{resp.text[:300]}"
+        )
 
-    resp_data = resp.json()
-    if resp_data["code"] != 0:
-        raise RuntimeError(f"[获取上传链接] API业务错误，返回数据：{resp_data}")
+    try:
+        resp_data = resp.json()
+    except Exception as e:
+        raise RuntimeError(
+            f"[获取上传链接] MinerU返回非JSON响应（可能是限流/过载页面），状态码：{resp.status_code}，"
+            f"响应前300字符：{resp.text[:300]}，原始解析错误：{e}"
+        )
+    if resp_data.get("code") != 0:
+        err_msg = _extract_mineru_error_msg(resp_data)
+        is_rate_limited = _is_mineru_rate_limited(resp_data)
+        logger.warning(f"[获取上传链接] MinerU返回业务错误，完整响应：{resp_data} | 错误：{err_msg} | 是否限流：{is_rate_limited}")
+        if is_rate_limited:
+            # 限流：指数退避重试
+            for attempt in range(1, _MAX_RETRIES + 1):
+                delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                logger.info(f"[获取上传链接] 检测到限流，第{attempt}次重试，等待{delay:.1f}s后重新请求...")
+                time.sleep(delay)
+                try:
+                    resp = requests.post(url=url_get_upload, headers=request_headers, json=req_data, timeout=30)
+                    resp_data = resp.json()
+                    if resp_data.get("code") == 0 and not _is_mineru_rate_limited(resp_data):
+                        logger.info(f"[获取上传链接] 限流重试成功，第{attempt}次")
+                        break
+                    logger.warning(f"[获取上传链接] 重试仍失败，响应：{resp_data}")
+                except Exception as retry_e:
+                    logger.warning(f"[获取上传链接] 重试网络异常：{retry_e}")
+                    if attempt == _MAX_RETRIES:
+                        raise RuntimeError(f"[获取上传链接] MinerU限流后重试{_MAX_RETRIES}次仍失败，错误：{err_msg}，trace_id={resp_data.get('trace_id', 'N/A')}") from retry_e
+            else:
+                raise RuntimeError(f"[获取上传链接] MinerU限流，重试{_MAX_RETRIES}次均失败，错误：{err_msg}")
+        else:
+            raise RuntimeError(f"[获取上传链接] MinerU业务错误（code={resp_data.get('code')}）：{err_msg}")
+    if "data" not in resp_data or not isinstance(resp_data.get("data"), dict):
+        logger.warning(f"[获取上传链接] MinerU响应缺少data字段，完整响应：{resp_data}")
+        raise RuntimeError(f"[获取上传链接] MinerU响应格式异常，缺少data字段，完整响应：{resp_data}")
 
     # 提取核心数据：上传链接和任务唯一标识
-    signed_url = resp_data["data"]["file_urls"][0]
-    batch_id = resp_data["data"]["batch_id"]
+    try:
+        signed_url = resp_data["data"]["file_urls"][0]
+        batch_id = resp_data["data"]["batch_id"]
+    except (KeyError, IndexError) as e:
+        logger.warning(f"[获取上传链接] MinerU响应缺少关键字段，完整响应：{resp_data}")
+        raise RuntimeError(
+            f"[获取上传链接] MinerU响应缺少必要字段（{e}），完整响应：{str(resp_data)[:300]}"
+        )
     logger.info(f"[获取上传链接] 成功，batch_id：{batch_id}，上传链接已生成")
 
-    # 2. 读取PDF二进制数据，准备上传
-    logger.info(f"[文件上传] 开始读取PDF文件：{pdf_path_obj.name}")
-    with open(pdf_path_obj, "rb") as f:
-        file_data = f.read()
+    # 2. 流式上传PDF（含网络异常指数退避重试）
+    logger.info(
+        f"[文件上传] 开始上传PDF文件：{pdf_path_obj.name}，"
+        f"文件大小：{os.path.getsize(pdf_path_obj)}字节"
+    )
 
     # 创建Session（复用TCP连接，禁用代理避免签名验证失败）
     upload_session = requests.Session()
     upload_session.trust_env = False
 
     try:
-        # 首次上传：自动识别文件类型
-        put_resp = upload_session.put(url=signed_url, data=file_data, timeout=60)
-        # 重试逻辑：首次失败则强制指定PDF的Content-Type
-        if put_resp.status_code != 200:
-            logger.warning(f"[文件上传] 首次上传失败（状态码：{put_resp.status_code}），强制指定PDF类型重试")
-            pdf_headers = {"Content-Type": "application/pdf"}
-            put_resp = upload_session.put(url=signed_url, data=file_data, headers=pdf_headers, timeout=60)
-            # 重试仍失败则抛出异常
-            if put_resp.status_code != 200:
-                raise RuntimeError(f"[文件上传] 重试后仍失败，状态码：{put_resp.status_code}，响应内容：{put_resp.text}")
-        logger.info(f"[文件上传] 成功，文件{pdf_path_obj.name}已存入云存储")
-    except Exception as e:
-        raise RuntimeError(f"[文件上传] 网络异常导致上传失败，错误信息：{str(e)}")
+        _upload_pdf_to_signed_url(upload_session, signed_url, pdf_path_obj)
     finally:
         # 无论成败，关闭Session释放网络连接，避免资源泄漏
         upload_session.close()
@@ -153,19 +286,46 @@ def step_2_upload_and_poll(pdf_path_obj: Path, output_dir_obj: Path):
                 raise RuntimeError(f"[任务轮询] HTTP请求失败，状态码：{poll_resp.status_code}，响应内容：{poll_resp.text}")
 
         # 解析轮询结果，校验业务状态
-        poll_data = poll_resp.json()
-        if poll_data["code"] != 0:
-            raise RuntimeError(f"[任务轮询] API业务错误，返回数据：{poll_data}")
+        try:
+            poll_data = poll_resp.json()
+        except Exception as e:
+            logger.warning(f"[任务轮询] 返回非JSON响应（可能是限流/过载），状态码：{poll_resp.status_code}，前300字符：{poll_resp.text[:300]}")
+            time.sleep(poll_interval)
+            continue
 
-        extract_results = poll_data["data"]["extract_result"]
+        if poll_data.get("code") != 0:
+            err_msg = _extract_mineru_error_msg(poll_data)
+            is_rate_limited = _is_mineru_rate_limited(poll_data)
+            logger.warning(f"[任务轮询] MinerU业务错误，完整响应：{poll_data} | 错误：{err_msg} | 是否限流：{is_rate_limited}")
+            if is_rate_limited:
+                # 限流：等待后继续轮询（MinerU后台任务可能仍在处理）
+                wait = poll_interval * 2
+                logger.info(f"[任务轮询] 检测到限流，等待{wait}s后继续轮询...")
+                time.sleep(wait)
+                continue
+            raise RuntimeError(f"[任务轮询] API业务错误（code={poll_data.get('code')}）：{err_msg}")
+
+        if "data" not in poll_data or not isinstance(poll_data.get("data"), dict):
+            logger.warning(f"[任务轮询] MinerU响应缺少data字段，完整响应：{poll_data}")
+            raise RuntimeError(f"[任务轮询] MinerU响应格式异常，缺少data字段，完整响应：{poll_data}")
+
+        try:
+            extract_results = poll_data["data"]["extract_result"]
+        except (KeyError, TypeError) as e:
+            logger.warning(f"[任务轮询] MinerU响应缺少extract_result字段，完整响应：{poll_data}")
+            raise RuntimeError(f"[任务轮询] MinerU响应缺少必要字段（{e}），完整响应：{str(poll_data)[:300]}")
         # 结果暂空，继续轮询
         if not extract_results:
-            logger.debug(f"[任务轮询] 结果暂为空，已耗时{int(elapsed_time)}s，继续等待")
+            logger.info(f"[任务轮询] 结果暂为空，已耗时{int(elapsed_time)}s，继续等待")
             time.sleep(poll_interval)
             continue
         # 解析任务状态，分支处理
         result_item = extract_results[0]
-        state_status = result_item["state"]
+        state_status = result_item.get("state") or result_item.get("status")
+        if not state_status:
+            logger.warning(f"[任务轮询] extract_result[0] 缺少状态字段，完整条目：{result_item}")
+            time.sleep(poll_interval)
+            continue
         # 状态1：任务完成，提取ZIP下载链接
         if state_status == "done":
             logger.info(f"[任务轮询] 解析任务完成！总耗时：{int(elapsed_time)}s，batch_id：{batch_id}")
@@ -180,9 +340,8 @@ def step_2_upload_and_poll(pdf_path_obj: Path, output_dir_obj: Path):
             raise RuntimeError(f"[任务轮询] 解析任务失败，batch_id：{batch_id}，错误信息：{err_msg}")
         # 状态3：处理中，实时打印进度（覆盖当前行）
         else:
-            logger.debug(
-                f"[任务轮询] 处理中（已耗时{int(elapsed_time)}s），状态：{state_status} | 刷新间隔{poll_interval}s",
-                end="\r"
+            logger.info(
+                f"[任务轮询] 处理中（已耗时{int(elapsed_time)}s），状态：{state_status} | 刷新间隔{poll_interval}s"
             )
             time.sleep(poll_interval)
 
@@ -318,7 +477,7 @@ def node_pdf_to_md(state: ImportGraphState) -> ImportGraphState:
 
     except Exception as e:
         # 异常日志分级，精准提示配置问题
-        logger.error(f"【{func_name}】PDF转MD流程执行失败：{str(e)}", exc_info=True)
+        logger.opt(exception=True).error(f"【{func_name}】PDF转MD流程执行失败：{str(e)}")
         raise  # 抛出异常，终止工作流
     finally:
 

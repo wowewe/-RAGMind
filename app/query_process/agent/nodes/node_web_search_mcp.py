@@ -6,63 +6,102 @@ from app.conf.bailian_mcp_config import mcp_config
 from agents.mcp import MCPServerSse
 from app.core.logger import logger
 
+def _use_streamable_http() -> bool:
+    """
+    判断当前 MCP 端点是 Streamable HTTP (/mcp) 还是 SSE (/sse)。
+    百炼控制台“外部调用”生成的链接一般是 .../WebSearch/mcp（Streamable HTTP），
+    而旧式公网链接 .../WebSearch/sse 是 SSE 协议。
+    """
+    return mcp_config.mcp_base_url.rstrip("/").endswith("/mcp")
+
+
+async def _mcp_call_streamable_http(query):
+    """
+    使用 Streamable HTTP 协议调用百炼 MCP 服务（适用于 .../WebSearch/mcp 端点）。
+    返回对象结构与 CallToolResult 兼容（含 content / isError 字段）。
+    """
+    from mcp.client.streamable_http import streamablehttp_client
+    from mcp import ClientSession
+
+    async with streamablehttp_client(
+        mcp_config.mcp_base_url,
+        headers={"Authorization": mcp_config.auth_header},
+    ) as (read, write, _):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            logger.info(f"[MCP] 连接成功，正在调用工具 'bailian_web_search' 查询: {query}")
+            result = await session.call_tool(
+                "bailian_web_search",
+                {"query": query, "count": 5},
+            )
+            logger.info("[MCP] 工具调用完成，已获取返回结果")
+            return result
+
+
 async def mcp_call(query):
     """
     异步调用百炼MCP搜索服务的核心函数。
-    
-    该函数负责初始化MCP客户端，建立SSE连接，调用远程工具，并返回原始结果。
-    
+
+    该函数根据配置的端点自动选择协议：
+    - URL 以 /mcp 结尾：走 Streamable HTTP（百炼控制台外部调用链接）
+    - 其他：走 SSE（兼容旧的 .../WebSearch/sse 公网链接）
+
     :param query: 搜索查询词（通常是经过改写后的精准Query）
     :return: MCP返回的原始结果对象 (包含 content, isError 等字段)
     """
-    
-    # ==================================================================================
-    # 初始化百炼MCP SSE客户端
-    # ----------------------------------------------------------------------------------
-    # MCPServerSse 是一个基于 SSE (Server-Sent Events) 协议的 MCP 客户端实现。
-    # 它的作用是连接到阿里云百炼提供的 MCP 服务端点，从而让我们可以像调用本地函数一样调用远程工具。
-    #
-    # 参数解释：
-    # name: 客户端名称，用于日志标识，方便调试。
-    # params: 连接配置字典
-    #   - url: MCP 服务的 SSE 接口地址 (例如: .../mcps/WebSearch/sse)
-    #   - headers: HTTP 请求头，必须包含 Authorization 字段传入 API Key 进行鉴权。
-    #   - timeout: 连接建立和整体请求的超时时间。
-    #   - sse_read_timeout: 读取 SSE 事件流的超时时间，防止流中断导致挂起。
-    # ==================================================================================
-    search_mcp = MCPServerSse(
-        name="search_mcp",
-        params={
-            "url": mcp_config.mcp_base_url,
-            "headers": {"Authorization": mcp_config.api_key},
-            "timeout": 300,
-            "sse_read_timeout": 300
-        }
-    )
-
     try:
         logger.info(f"[MCP] 正在连接百炼 WebSearch 服务: {mcp_config.mcp_base_url}")
-        # 建立与MCP服务的SSE连接（异步方法，需await）
-        await search_mcp.connect()
-        
-        logger.info(f"[MCP] 连接成功，正在调用工具 'bailian_web_search' 查询: {query}")
-        # 调用百炼MCP的搜索工具（核心步骤）
-        # tool_name: "bailian_web_search" 是百炼官方定义的工具名称
-        # arguments: 工具所需的参数，这里需要 "query" (查询词) 和 "count" (返回数量)
-        result = await search_mcp.call_tool(
-            tool_name="bailian_web_search", 
-            arguments={"query": query, "count": 5}
+
+        # 协议一：Streamable HTTP（/mcp 端点）
+        if _use_streamable_http():
+            return await _mcp_call_streamable_http(query)
+
+        # ==================================================================================
+        # 协议二：SSE 客户端（兼容 /sse 端点）
+        # ----------------------------------------------------------------------------------
+        # MCPServerSse 是一个基于 SSE (Server-Sent Events) 协议的 MCP 客户端实现。
+        # 它的作用是连接到阿里云百炼提供的 MCP 服务端点，从而让我们可以像调用本地函数一样调用远程工具。
+        #
+        # 参数解释：
+        # name: 客户端名称，用于日志标识，方便调试。
+        # params: 连接配置字典
+        #   - url: MCP 服务的 SSE 接口地址 (例如: .../mcps/WebSearch/sse)
+        #   - headers: HTTP 请求头，必须包含 Authorization 字段传入 API Key 进行鉴权。
+        #   - timeout: 连接建立和整体请求的超时时间。
+        #   - sse_read_timeout: 读取 SSE 事件流的超时时间，防止流中断导致挂起。
+        # ==================================================================================
+        search_mcp = MCPServerSse(
+            name="search_mcp",
+            params={
+                "url": mcp_config.mcp_base_url,
+                "headers": {"Authorization": mcp_config.auth_header},
+                "timeout": 300,
+                "sse_read_timeout": 300
+            }
         )
-        logger.info("[MCP] 工具调用完成，已获取返回结果")
-        return result
-        
+
+        try:
+            # 建立与MCP服务的SSE连接（异步方法，需await）
+            await search_mcp.connect()
+
+            logger.info(f"[MCP] 连接成功，正在调用工具 'bailian_web_search' 查询: {query}")
+            # 调用百炼MCP的搜索工具（核心步骤）
+            # tool_name: "bailian_web_search" 是百炼官方定义的工具名称
+            # arguments: 工具所需的参数，这里需要 "query" (查询词) 和 "count" (返回数量)
+            result = await search_mcp.call_tool(
+                tool_name="bailian_web_search",
+                arguments={"query": query, "count": 5}
+            )
+            logger.info("[MCP] 工具调用完成，已获取返回结果")
+            return result
+
+        finally:
+            # 无论调用成功/失败，最终都关闭MCP连接（释放资源，异步方法）
+            await search_mcp.cleanup()
+
     except Exception as e:
-        logger.error(f"[MCP] 调用过程中发生异常: {e}", exc_info=True)
+        logger.error("[MCP] 调用过程中发生异常: {}", e, exc_info=True)
         return None
-        
-    finally:
-        # 无论调用成功/失败，最终都关闭MCP连接（释放资源，异步方法）
-        await search_mcp.cleanup()
 
 
 def node_web_search_mcp(state):
@@ -150,7 +189,7 @@ def node_web_search_mcp(state):
             logger.info(f"结构化搜索结果数量: {len(docs)}")
             
         except Exception as e:
-            logger.error(f"MCP 搜索节点执行异常: {e}", exc_info=True)
+            logger.error("MCP 搜索节点执行异常: {}", e, exc_info=True)
     else:
         logger.warning("查询词为空，跳过 MCP 搜索")
 

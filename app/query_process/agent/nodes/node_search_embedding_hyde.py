@@ -43,7 +43,7 @@ def step_1_create_hyde_doc(rewritten_query: str) -> str:
         return hyde_doc
 
     except Exception as e:
-        logger.error(f"Step 1: 生成假设文档失败: {e}")
+        logger.error("Step 1: 生成假设文档失败: {}", e)
         raise e
 
 
@@ -133,7 +133,7 @@ def step_2_search_embedding_hyde(
         return res
 
     except Exception as e:
-        logger.error(f"Step 2: 检索过程发生异常: {e}")
+        logger.error("Step 2: 检索过程发生异常: {}", e)
         return []
 
 
@@ -178,7 +178,7 @@ def node_search_embedding_hyde(state):
         logger.info(f"Step 1: 假设文档生成成功 (长度: {len(hyde_doc)})")
         logger.debug(f"假设文档预览: {hyde_doc[:100]}...")
     except Exception as e:
-        logger.error(f"Step 1 (生成假设文档) 发生异常: {e}", exc_info=True)
+        logger.error("Step 1 (生成假设文档) 发生异常: {}", e, exc_info=True)
         # HyDE生成失败属于非阻断性错误，可选择直接返回空或降级处理，此处直接返回空结果
         return {}
 
@@ -207,7 +207,7 @@ def node_search_embedding_hyde(state):
             "hyde_doc": hyde_doc,
         }
     except Exception as e:
-        logger.error(f"Step 2 (向量生成与检索) 发生异常: {e}", exc_info=True)
+        logger.error("Step 2 (向量生成与检索) 发生异常: {}", e, exc_info=True)
         return {}
     finally:
         # 无论成功失败，均标记任务结束

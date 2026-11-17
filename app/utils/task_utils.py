@@ -22,31 +22,31 @@ TASK_STATUS_PROCESSING = "processing"
 TASK_STATUS_COMPLETED = "completed"
 TASK_STATUS_FAILED = "failed"
 
-# 节点名 -> 中文名映射（用于前端展示）
+# 节点名 -> 英文展示名映射（用于前端展示）
 # 说明：这里的 key 应与 LangGraph 的 add_node("xxx", ...) 中的节点名一致。
 _NODE_NAME_TO_CN: Dict[str, str] = {
-    "upload_file": "开始上传文件",
-    "node_entry": "检查文件",
-    "node_pdf_to_md": "PDF转Markdown",
-    "node_md_img": "Markdown图片处理",
-    "node_item_name_recognition": "主体名称识别",
-    "node_document_split": "文档切分",
-    "node_bge_embedding": "向量生成",
-    "node_import_kg": "导入知识图谱",
-    "node_import_milvus": "导入向量库",
-    "__end__": "处理完成",
-    "END": "处理完成",
+    "upload_file": "Uploading file",
+    "node_entry": "Checking file",
+    "node_pdf_to_md": "PDF to Markdown",
+    "node_md_img": "Markdown image processing",
+    "node_item_name_recognition": "Item name recognition",
+    "node_document_split": "Document splitting",
+    "node_bge_embedding": "Embedding generation",
+    "node_import_kg": "Importing knowledge graph",
+    "node_import_milvus": "Importing vector database",
+    "__end__": "Completed",
+    "END": "Completed",
     # --- Query 流程节点（kb/query_process/main_graph.py）---
-    "node_item_name_confirm": "确认问题产品",
-    "node_answer_output": "生成答案",
-    "node_rerank": "重排序",
-    "node_rrf": "倒排融合",
-    "node_web_search_mcp": "网络搜索",
-    "node_search_embedding": "切片搜索",
-    "node_search_embedding_hyde": "切片搜索(假设性文档)",
-    "node_multi_search": "多路搜索",
-    "node_query_kg": "查询知识图谱",
-    "node_join": "多路搜索合并",
+    "node_item_name_confirm": "Confirming product",
+    "node_answer_output": "Generating answer",
+    "node_rerank": "Reranking",
+    "node_rrf": "RRF fusion",
+    "node_web_search_mcp": "Web search",
+    "node_search_embedding": "Chunk search",
+    "node_search_embedding_hyde": "Chunk search (HyDE)",
+    "node_multi_search": "Multi-path search",
+    "node_query_kg": "Querying knowledge graph",
+    "node_join": "Merging results",
 }
 
 

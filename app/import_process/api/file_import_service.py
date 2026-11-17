@@ -1,5 +1,8 @@
+import asyncio
 import os
 import shutil
+import sys
+import threading
 import uuid
 from typing import List, Dict, Any
 from datetime import datetime
@@ -22,6 +25,10 @@ from app.utils.task_utils import (
 from app.import_process.agent.state import get_default_state
 from app.import_process.agent.main_graph import kb_import_app  # LangGraph全流程编译实例
 from app.core.logger import logger  # 项目统一日志工具
+
+# MinerU 并发控制：最多同时处理 MAX_CONCURRENT_MINERU 个文件，避免触发服务端限流
+MAX_CONCURRENT_MINERU = int(os.getenv("MAX_CONCURRENT_MINERU", "2"))
+_mineru_semaphore = threading.Semaphore(MAX_CONCURRENT_MINERU)
 
 # 初始化FastAPI应用实例
 # 标题和描述会在Swagger文档(http://ip:port/docs)中展示
@@ -70,8 +77,8 @@ async def get_import_page():
 # --------------------------
 def run_graph_task(task_id: str, local_dir: str, local_file_path: str):
     """
-    LangGraph全流程执行后台任务
-    核心流程：初始化状态 → 流式执行图节点 → 实时更新任务状态 → 异常捕获
+    LangGraph全流程执行后台任务（带 MinerU 并发控制）
+    核心流程：获取信号量 → 初始化状态 → 流式执行图节点 → 实时更新任务状态 → 异常捕获
     任务状态更新：pending → processing → completed/failed
     节点进度更新：每完成一个节点，将节点名加入done_list，供前端轮询查看
 
@@ -79,33 +86,41 @@ def run_graph_task(task_id: str, local_dir: str, local_file_path: str):
     :param local_dir: 该任务的本地文件存储目录（含临时文件/解析结果）
     :param local_file_path: 上传文件的本地绝对路径
     """
-    try:
-        # 1. 更新任务全局状态为：处理中
-        update_task_status(task_id, "processing")
-        logger.info(f"[{task_id}] 开始执行LangGraph全流程，本地文件路径：{local_file_path}")
+    # 等待信号量：最多同时有 MAX_CONCURRENT_MINERU 个任务调用 MinerU，避免触发限流
+    with _mineru_semaphore:
+        logger.info(f"[{task_id}] 获取到MinerU并发许可，开始执行LangGraph全流程")
+        try:
+            # 1. 更新任务全局状态为：处理中
+            update_task_status(task_id, "processing")
+            logger.info(f"[{task_id}] 开始执行LangGraph全流程，本地文件路径：{local_file_path}")
 
-        # 2. 初始化LangGraph状态：加载默认状态 + 注入当前任务的核心参数
-        init_state = get_default_state()
-        init_state["task_id"] = task_id  # 任务ID关联
-        init_state["local_dir"] = local_dir  # 任务本地目录
-        init_state["local_file_path"] = local_file_path  # 上传文件本地路径
+            # 2. 初始化LangGraph状态：加载默认状态 + 注入当前任务的核心参数
+            init_state = get_default_state()
+            init_state["task_id"] = task_id  # 任务ID关联
+            init_state["local_dir"] = local_dir  # 任务本地目录
+            init_state["local_file_path"] = local_file_path  # 上传文件本地路径
 
-        # 3. 流式执行LangGraph全流程（stream模式：实时获取每个节点的执行结果）
-        for event in kb_import_app.stream(init_state):
-            for node_name, node_result in event.items():
-                # 记录每个节点完成的日志，包含任务ID和节点名，方便追踪执行顺序
-                logger.info(f"[{task_id}] LangGraph节点执行完成：{node_name}")
-                # 将完成的节点名加入【已完成列表】，前端轮询/status/{task_id}可实时获取
-                add_done_task(task_id, node_name)
+            # 3. 流式执行LangGraph全流程（stream模式：实时获取每个节点的执行结果）
+            for event in kb_import_app.stream(init_state):
+                for node_name, node_result in event.items():
+                    # 记录每个节点完成的日志，包含任务ID和节点名，方便追踪执行顺序
+                    logger.info(f"[{task_id}] LangGraph节点执行完成：{node_name}")
+                    # 将完成的节点名加入【已完成列表】，前端轮询/status/{task_id}可实时获取
+                    add_done_task(task_id, node_name)
 
-        # 4. 全流程执行完成，更新任务全局状态为：已完成
-        update_task_status(task_id, "completed")
-        logger.info(f"[{task_id}] LangGraph全流程执行完毕，任务完成")
+            # 4. 全流程执行完成，更新任务全局状态为：已完成
+            update_task_status(task_id, "completed")
+            logger.info(f"[{task_id}] LangGraph全流程执行完毕，任务完成")
 
-    except Exception as e:
-        # 5. 捕获全流程异常，更新任务全局状态为：失败，并记录错误日志（含堆栈）
-        update_task_status(task_id, "failed")
-        logger.error(f"[{task_id}] LangGraph全流程执行失败，异常信息：{str(e)}", exc_info=True)
+        except Exception as e:
+            # 5. 捕获全流程异常，更新任务全局状态为：失败，并记录完整堆栈
+            update_task_status(task_id, "failed")
+            exc_type, exc_val, exc_tb = sys.exc_info()
+            logger.opt(exception=True).error(
+                f"[{task_id}] LangGraph全流程执行失败！"
+                f"\n  异常类型: {exc_type.__name__}"
+                f"\n  异常信息: {str(exc_val)}"
+            )
 
 
 # --------------------------
